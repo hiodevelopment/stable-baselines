@@ -17,6 +17,7 @@ from stable_baselines.common.save_util import (
 )
 from stable_baselines.common.policies import get_policy_from_name, ActorCriticPolicy
 from stable_baselines.common.vec_env import VecEnvWrapper, VecEnv, DummyVecEnv
+from stable_baselines.common.misc_util import flatten_action_mask
 from stable_baselines import logger
 
 
@@ -138,8 +139,8 @@ class BaseRLModel(ABC):
     def _init_num_timesteps(self, reset_num_timesteps=True):
         """
         Initialize and resets num_timesteps (total timesteps since beginning of training)
-        if needed. Mainly used logging and plotting (tensorboard).
 
+        if needed. Mainly used logging and plotting (tensorboard).
         :param reset_num_timesteps: (bool) Set it to false when continuing training
             to not create new plotting curves in tensorboard.
         :return: (bool) Whether a new tensorboard log needs to be created
@@ -239,7 +240,7 @@ class BaseRLModel(ABC):
             (from the expert dataset)
         - deterministic_actions_ph: e.g., in the case of a gaussian policy,
             the mean.
-
+            
         :return: ((tf.placeholder)) (obs_ph, actions_ph, deterministic_actions_ph)
         """
         pass
@@ -349,7 +350,7 @@ class BaseRLModel(ABC):
         pass
 
     @abstractmethod
-    def predict(self, observation, state=None, mask=None, deterministic=False):
+    def predict(self, observation, state=None, mask=None, deterministic=False, action_mask=None):
         """
         Get the model's action from an observation
 
@@ -357,12 +358,13 @@ class BaseRLModel(ABC):
         :param state: (np.ndarray) The last states (can be None, used in recurrent policies)
         :param mask: (np.ndarray) The last masks (can be None, used in recurrent policies)
         :param deterministic: (bool) Whether or not to return deterministic actions.
+        :param action_mask: (np.ndarray) The last masks (can be None, used in block invalid action)
         :return: (np.ndarray, np.ndarray) the model's action and the next state (used in recurrent policies)
         """
         pass
 
     @abstractmethod
-    def action_probability(self, observation, state=None, mask=None, actions=None, logp=False):
+    def action_probability(self, observation, state=None, mask=None, actions=None, logp=False, action_mask=None):
         """
         If ``actions`` is ``None``, then get the model's action probability distribution from a given observation.
 
@@ -384,6 +386,7 @@ class BaseRLModel(ABC):
             (set to None to return the complete action probability distribution)
         :param logp: (bool) (OPTIONAL) When specified with actions, returns probability in log-space.
             This has no effect if actions is None.
+        :param action_mask: ([bool]) (OPTIONAL) The action mask to be applied
         :return: (np.ndarray) the model's (log) action probability
         """
         pass
@@ -396,7 +399,7 @@ class BaseRLModel(ABC):
         with ``get_parameters`` function. If ``exact_match`` is True, dictionary
         should contain keys for all model's parameters, otherwise RunTimeError
         is raised. If False, only variables included in the dictionary will be updated.
-
+        
         This does not load agent's hyper-parameters.
 
         .. warning::
@@ -646,7 +649,7 @@ class BaseRLModel(ABC):
     def _softmax(x_input):
         """
         An implementation of softmax.
-
+        
         :param x_input: (numpy float) input vector
         :return: (numpy float) output vector
         """
@@ -743,16 +746,22 @@ class ActorCriticRLModel(BaseRLModel):
               log_interval=100, tb_log_name="run", reset_num_timesteps=True):
         pass
 
-    def predict(self, observation, state=None, mask=None, deterministic=False):
+    def predict(self, observation, state=None, mask=None, deterministic=False, action_mask=None):
         if state is None:
             state = self.initial_state
         if mask is None:
             mask = [False for _ in range(self.n_envs)]
+
+        action_masks = []
+        if action_mask is not None:
+            for env_action_mask in action_mask:
+                action_masks.append(flatten_action_mask(self.env.action_space, env_action_mask))
+
         observation = np.array(observation)
         vectorized_env = self._is_vectorized_observation(observation, self.observation_space)
 
         observation = observation.reshape((-1,) + self.observation_space.shape)
-        actions, _, states, _ = self.step(observation, state, mask, deterministic=deterministic)
+        actions, _, states, _ = self.step(observation, state, mask, action_mask=action_masks, deterministic=deterministic)
 
         clipped_actions = actions
         # Clip the actions to avoid out of bound error
@@ -766,7 +775,7 @@ class ActorCriticRLModel(BaseRLModel):
 
         return clipped_actions, states
 
-    def action_probability(self, observation, state=None, mask=None, actions=None, logp=False):
+    def action_probability(self, observation, state=None, mask=None, actions=None, logp=False, action_mask=None):
         if state is None:
             state = self.initial_state
         if mask is None:
@@ -775,7 +784,7 @@ class ActorCriticRLModel(BaseRLModel):
         vectorized_env = self._is_vectorized_observation(observation, self.observation_space)
 
         observation = observation.reshape((-1,) + self.observation_space.shape)
-        actions_proba = self.proba_step(observation, state, mask)
+        actions_proba = self.proba_step(observation, state, mask, action_mask)
 
         if len(actions_proba) == 0:  # empty list means not implemented
             warnings.warn("Warning: action probability is not implemented for {} action space. Returning None."
@@ -925,11 +934,11 @@ class OffPolicyRLModel(BaseRLModel):
         pass
 
     @abstractmethod
-    def predict(self, observation, state=None, mask=None, deterministic=False):
+    def predict(self, observation, state=None, mask=None, deterministic=False, action_mask=None):
         pass
 
     @abstractmethod
-    def action_probability(self, observation, state=None, mask=None, actions=None, logp=False):
+    def action_probability(self, observation, state=None, mask=None, actions=None, logp=False, action_mask=None):
         pass
 
     @abstractmethod
@@ -1083,7 +1092,7 @@ class TensorboardWriter:
         """
         returns the latest run number for the given log name and log path,
         by finding the greatest number in the directories.
-
+        
         :return: (int) latest run number
         """
         max_run_id = 0

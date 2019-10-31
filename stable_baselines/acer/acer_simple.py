@@ -11,6 +11,7 @@ from stable_baselines.acer.buffer import Buffer
 from stable_baselines.common import ActorCriticRLModel, tf_util, SetVerbosity, TensorboardWriter
 from stable_baselines.common.runners import AbstractEnvRunner
 from stable_baselines.common.policies import ActorCriticPolicy, RecurrentActorCriticPolicy
+from stable_baselines.common.misc_util import flatten_action_mask
 
 
 def strip(var, n_envs, n_steps, flat=False):
@@ -69,7 +70,7 @@ class ACER(ActorCriticRLModel):
     :param n_steps: (int) The number of steps to run for each environment per update
         (i.e. batch size is n_steps * n_env where n_env is number of environment copies running in parallel)
     :param num_procs: (int) The number of threads for TensorFlow operations
-
+    
         .. deprecated:: 2.9.0
             Use `n_cpu_tf_sess` instead.
 
@@ -630,6 +631,7 @@ class _Runner(AbstractEnvRunner):
         self.n_steps = n_steps
         self.states = model.initial_state
         self.dones = [False for _ in range(n_env)]
+        self.action_masks = []
 
     def run(self):
         """
@@ -641,7 +643,7 @@ class _Runner(AbstractEnvRunner):
         enc_obs = [self.obs]
         mb_obs, mb_actions, mb_mus, mb_dones, mb_rewards = [], [], [], [], []
         for _ in range(self.n_steps):
-            actions, _, states, _ = self.model.step(self.obs, self.states, self.dones)
+            actions, _, states, _ = self.model.step(self.obs, self.states, self.dones, action_mask=self.action_masks)
             mus = self.model.proba_step(self.obs, self.states, self.dones)
             mb_obs.append(np.copy(self.obs))
             mb_actions.append(actions)
@@ -651,7 +653,13 @@ class _Runner(AbstractEnvRunner):
             # Clip the actions to avoid out of bound error
             if isinstance(self.env.action_space, Box):
                 clipped_actions = np.clip(actions, self.env.action_space.low, self.env.action_space.high)
-            obs, rewards, dones, _ = self.env.step(clipped_actions)
+            obs, rewards, dones, infos = self.env.step(clipped_actions)
+            self.action_masks.clear()
+            for info in infos:
+                # actoin mask
+                env_action_mask = info.get('action_mask')
+                self.action_masks.append(flatten_action_mask(self.env.action_space, env_action_mask))
+
             # states information for statefull models like LSTM
             self.states = states
             self.dones = dones

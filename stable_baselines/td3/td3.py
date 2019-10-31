@@ -414,7 +414,7 @@ class TD3(OffPolicyRLModel):
                     infos_values = []
             return self
 
-    def action_probability(self, observation, state=None, mask=None, actions=None, logp=False):
+    def action_probability(self, observation, state=None, mask=None, actions=None, logp=False, action_mask=None):
         _ = np.array(observation)
 
         if actions is not None:
@@ -424,7 +424,7 @@ class TD3(OffPolicyRLModel):
         warnings.warn("Warning: action probability is meaningless for TD3. Returning None")
         return None
 
-    def predict(self, observation, state=None, mask=None, deterministic=True):
+    def predict(self, observation, state=None, mask=None, deterministic=True, action_mask=None):
         observation = np.array(observation)
         vectorized_env = self._is_vectorized_observation(observation, self.observation_space)
 

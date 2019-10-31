@@ -2,6 +2,7 @@ import gym
 import numpy as np
 
 from stable_baselines.common.vec_env import VecEnv
+from stable_baselines.common.misc_util import flatten_action_mask
 
 
 def traj_segment_generator(policy, env, horizon, reward_giver=None, gail=False):
@@ -55,9 +56,10 @@ def traj_segment_generator(policy, env, horizon, reward_giver=None, gail=False):
     states = policy.initial_state
     episode_start = True  # marks if we're on first timestep of an episode
     done = False
+    action_masks = []
 
     while True:
-        action, vpred, states, _ = policy.step(observation.reshape(-1, *observation.shape), states, done)
+        action, vpred, states, _ = policy.step(observation.reshape(-1, *observation.shape), states, done, action_mask=action_masks)
         # Slight weirdness here because we need value function at time T
         # before returning segment [0, T-1] so we get the correct
         # terminal value
@@ -105,6 +107,11 @@ def traj_segment_generator(policy, env, horizon, reward_giver=None, gail=False):
         true_rewards[i] = true_reward
         dones[i] = done
         episode_start = done
+
+        # actoin mask
+        action_masks.clear()
+        env_action_mask = info.get('action_mask')
+        action_masks.append(flatten_action_mask(env.action_space, env_action_mask))
 
         cur_ep_ret += reward
         cur_ep_true_ret += true_reward

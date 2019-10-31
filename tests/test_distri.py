@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 
 import stable_baselines.common.tf_util as tf_util
-from stable_baselines.common.distributions import DiagGaussianProbabilityDistributionType,\
+from stable_baselines.common.distributions import DiagGaussianProbabilityDistributionType, \
     CategoricalProbabilityDistributionType, \
     MultiCategoricalProbabilityDistributionType, BernoulliProbabilityDistributionType
 
@@ -43,6 +43,8 @@ def validate_probtype(probtype, pdparam):
     # Check to see if mean negative log likelihood == differential entropy
     mval = np.repeat(pdparam[None, :], number_samples, axis=0)
     mval_ph = probtype.param_placeholder([number_samples])
+    action_mask_ph = probtype.param_placeholder([number_samples])
+    action_mask_ph = tf.placeholder_with_default(tf.zeros_like(action_mask_ph), shape=np.shape(action_mask_ph))
     xval_ph = probtype.sample_placeholder([number_samples])
     proba_distribution = probtype.proba_distribution_from_flat(mval_ph)
     calcloglik = tf_util.function([xval_ph, mval_ph], proba_distribution.logp(xval_ph))
@@ -56,6 +58,8 @@ def validate_probtype(probtype, pdparam):
 
     # Check to see if kldiv[p,q] = - ent[p] - E_p[log q]
     mval2_ph = probtype.param_placeholder([number_samples])
+    action_mask_ph2 = probtype.param_placeholder([number_samples])
+    action_mask_ph2 = tf.placeholder_with_default(tf.zeros_like(action_mask_ph2), shape=np.shape(action_mask_ph2))
     pd2 = probtype.proba_distribution_from_flat(mval2_ph)
     tmp = pdparam + np.random.randn(pdparam.size) * 0.1
     mval2 = np.repeat(tmp[None, :], number_samples, axis=0)

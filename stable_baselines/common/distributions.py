@@ -280,20 +280,34 @@ class BernoulliProbabilityDistributionType(ProbabilityDistributionType):
 
 
 class CategoricalProbabilityDistribution(ProbabilityDistribution):
-    def __init__(self, logits):
+    def __init__(self, logits, action_mask=None):
         """
         Probability distributions from categorical input
 
         :param logits: ([float]) the categorical logits input
         """
         self.logits = logits
+        if action_mask is None:
+            with tf.variable_scope("input", reuse=False):
+                no_mask = tf.zeros_like(self.logits)
+                self._action_mask_ph = tf.placeholder_with_default(no_mask, shape=self.logits.shape, name="action_ph")
+        else:
+            self._action_mask_ph = action_mask
         super(CategoricalProbabilityDistribution, self).__init__()
+
+    @property
+    def action_mask_ph(self):
+        return self._action_mask_ph
 
     def flatparam(self):
         return self.logits
 
     def mode(self):
-        return tf.argmax(self.logits, axis=-1)
+        # mask: 0 is valid action, -inf is invalid action
+        # [1, 2, 3] add [0, -inf, 0] = [1, -inf, 3]
+        logits = self.logits
+        logits = tf.add(logits, self.action_mask_ph)
+        return tf.argmax(logits, axis=-1)
 
     def neglogp(self, x):
         # Note: we can't use sparse_softmax_cross_entropy_with_logits because
@@ -324,7 +338,12 @@ class CategoricalProbabilityDistribution(ProbabilityDistribution):
         # Gumbel-max trick to sample
         # a categorical distribution (see http://amid.fish/humble-gumbel)
         uniform = tf.random_uniform(tf.shape(self.logits), dtype=self.logits.dtype)
-        return tf.argmax(self.logits - tf.log(-tf.log(uniform)), axis=-1)
+        probability = self.logits - tf.log(-tf.log(uniform))
+
+        # mask: 0 is valid action, -inf is invalid action
+        # [1, 2, 3] add [0, -inf, 0] = [1, -inf, 3]
+        probability = tf.add(probability, self.action_mask_ph)
+        return tf.argmax(probability, axis=-1)
 
     @classmethod
     def fromflat(cls, flat):
@@ -346,8 +365,16 @@ class MultiCategoricalProbabilityDistribution(ProbabilityDistribution):
         :param flat: ([float]) the categorical logits input
         """
         self.flat = flat
-        self.categoricals = list(map(CategoricalProbabilityDistribution, tf.split(flat, nvec, axis=-1)))
+        with tf.variable_scope("input", reuse=False):
+            no_mask = tf.zeros_like(self.flat)
+            self._action_mask_ph = tf.placeholder_with_default(no_mask, shape=self.flat.shape, name="action_ph")
+        self.categoricals = list(map(CategoricalProbabilityDistribution, tf.split(flat, nvec, axis=-1),
+                                     tf.split(self.action_mask_ph, nvec, axis=-1)))
         super(MultiCategoricalProbabilityDistribution, self).__init__()
+
+    @property
+    def action_mask_ph(self):
+        return self._action_mask_ph
 
     def flatparam(self):
         return self.flat
