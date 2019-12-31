@@ -56,7 +56,8 @@ def mpi_rank_or_zero():
     except ImportError:
         return 0
 
-def flatten_action_mask(action_space, env_action_mask):
+
+def flatten_mask(action_space, env_action_mask):
     """
     Return action mask after flattening.
     :return: (list or None)

@@ -9,7 +9,7 @@ import tensorflow as tf
 from stable_baselines import logger
 from stable_baselines.common import explained_variance, ActorCriticRLModel, tf_util, SetVerbosity, TensorboardWriter
 from stable_baselines.common.runners import AbstractEnvRunner
-from stable_baselines.common.misc_util import flatten_action_mask
+from stable_baselines.common.misc_util import flatten_mask
 from stable_baselines.common.policies import ActorCriticPolicy, RecurrentActorCriticPolicy
 from stable_baselines.a2c.utils import total_episode_reward_logger
 
@@ -447,6 +447,8 @@ class Runner(AbstractEnvRunner):
         self.lam = lam
         self.gamma = gamma
         self.action_masks = []
+        self.curiosity_masks = []
+        self.masks = []
 
     def run(self):
         """
@@ -467,7 +469,9 @@ class Runner(AbstractEnvRunner):
         mb_states = self.states
         ep_infos = []
         for _ in range(self.n_steps):
-            actions, values, self.states, neglogpacs = self.model.step(self.obs, self.states, self.dones, action_mask=self.action_masks)
+            # combine the action mask and curiosity mask into one mask
+            # mask action mask with curiosity mask
+            actions, values, self.states, neglogpacs = self.model.step(self.obs, self.states, self.dones, action_mask=self.masks)
             mb_obs.append(self.obs.copy())
             mb_actions.append(actions)
             mb_values.append(values)
@@ -479,6 +483,8 @@ class Runner(AbstractEnvRunner):
                 clipped_actions = np.clip(actions, self.env.action_space.low, self.env.action_space.high)
             self.obs[:], rewards, self.dones, infos = self.env.step(clipped_actions)
             self.action_masks.clear()
+            self.curiosity_masks.clear()
+            self.masks.clear()
             for info in infos:
                 maybe_ep_info = info.get('episode')
                 if maybe_ep_info is not None:
@@ -486,7 +492,16 @@ class Runner(AbstractEnvRunner):
 
                 # action mask
                 env_action_mask = info.get('action_mask')
-                self.action_masks.append(flatten_action_mask(self.env.action_space, env_action_mask))
+                self.action_masks.append(np.array(flatten_mask(self.env.action_space, env_action_mask)))
+
+                # curiosity mask
+                env_cur_mask = info.get('curiosity_mask')
+                mask = np.array(flatten_mask(self.env.action_space, env_cur_mask))
+                mask[mask == 0] = -1
+                mask[mask == 1] = 0
+                mask = np.add(self.action_masks[-1], mask)
+                mask[mask<=0] = 0
+                self.masks.append(mask)
 
             mb_rewards.append(rewards)
         # batch of steps to batch of rollouts

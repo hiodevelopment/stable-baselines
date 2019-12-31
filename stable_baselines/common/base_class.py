@@ -17,7 +17,7 @@ from stable_baselines.common.save_util import (
 )
 from stable_baselines.common.policies import get_policy_from_name, ActorCriticPolicy
 from stable_baselines.common.vec_env import VecEnvWrapper, VecEnv, DummyVecEnv
-from stable_baselines.common.misc_util import flatten_action_mask
+from stable_baselines.common.misc_util import flatten_mask
 from stable_baselines import logger
 
 
@@ -755,7 +755,7 @@ class ActorCriticRLModel(BaseRLModel):
         action_masks = []
         if action_mask is not None:
             for env_action_mask in action_mask:
-                action_masks.append(flatten_action_mask(self.env.action_space, env_action_mask))
+                action_masks.append(flatten_mask(self.env.action_space, env_action_mask))
 
         observation = np.array(observation)
         vectorized_env = self._is_vectorized_observation(observation, self.observation_space)
