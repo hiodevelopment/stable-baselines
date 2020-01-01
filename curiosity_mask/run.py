@@ -1,4 +1,4 @@
-import stable_baselines.common.vec_env.bipedal_hueristic as bipedal
+import stable_baselines.common.vec_env.bipedal_heuristic as bipedal
 #import stable_baselines.common.vec_env.acrobot as acrobot
 from stable_baselines import PPO2 as PPO
 from stable_baselines.common.policies import MlpPolicy
