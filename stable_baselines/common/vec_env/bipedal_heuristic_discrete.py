@@ -1145,7 +1145,7 @@ if __name__=="__main__":
         knee_todo[1] -= 15.0*s[3]
 
 
-        possible_actions = [-1.0, -0.5, 0.5, 1.0]
+        possible_actions = [-0.5, -0.1, 0.1, 0.5]
 
         a[0] = possible_actions[min(range(len(possible_actions)), key = lambda i: abs(possible_actions[i]-hip_todo[0]))] # closest to: hip_todo[0]
 
