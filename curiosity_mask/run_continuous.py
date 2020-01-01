@@ -9,7 +9,7 @@ from stable_baselines.common.vec_env import DummyVecEnv
 env = DummyVecEnv([bipedal.BipedalWalker])
 
 model = SAC(MlpPolicy, env, verbose=1, tensorboard_log="run/")
-model.learn(total_timesteps=50)
+model.learn(total_timesteps=500000)
 #model.save("continuous_curiosity_mask")
 
 #del model # remove to demonstrate saving and loading
