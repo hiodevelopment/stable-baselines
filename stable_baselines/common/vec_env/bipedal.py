@@ -744,19 +744,17 @@ class BipedalWalker(gym.Env, EzPickle):
                 return 0
 
         self.lidar = [LidarCallback() for _ in range(10)]
-        print(self.step(np.array(0))[0])
         return self.step(np.array(0))[0] #self.step(np.array([0,0,0,0]))[0]
 
 
 
     def step(self, action_discrete):
 
-        #self.hull.ApplyForceToCenter((0, 20), True) -- Uncomment this to receive a bit of stability help
+        # self.hull.ApplyForceToCenter((0, 20), True) -- Uncomment this to receive a bit of stability help
         control_speed = False  # Should be easier as well
 
         act = np.array(np.meshgrid([-1, -0.5, 0.5, 1], [-1, -0.5, 0.5, 1], [-1, -0.5, 0.5, 1], [-1, -0.5, 0.5, 1])).T.reshape(-1,4) 
         action = act[action_discrete]
-        print(action_discrete, action)
         
         if control_speed:
 
@@ -999,19 +997,62 @@ class BipedalWalker(gym.Env, EzPickle):
 
         a[3] = possible_actions[min(range(len(possible_actions)), key = lambda i: abs(possible_actions[i]-knee_todo[1]))] # closest to: knee_todo[1]
 
-        # Pack this up into an array and find the index of that value in the action array. 
-        print(a)
-        print(s, len(s))
-        #a = np.clip(0.5*a, -1.0, 1.0)
-        action_mask = [1] * 256 # All actions are valid. 
-        
+        # Pack this up into an array and find the index of that value in the action array.
+
+        # a = np.clip(0.5*a, -1.0, 1.0)
+        action_mask = [1] * 256 # All actions are valid.
+
+        # figure out what leg to move next
+        # state
+        # set those values to 1 in cur mask
+        #         a[0] = hip_todo[0]
+        #
+        #         a[1] = knee_todo[0]
+        #
+        #         a[2] = hip_todo[1]
+        #
+        #         a[3] = knee_todo[1]
+        # beginning, a + small eps
+        # middle, a + medium eps
+        # adv, a + large eps
+        # expert, all actions valid
+
         list_of_arrays = np.array(np.meshgrid([-1, -0.5, 0.5, 1], [-1, -0.5, 0.5, 1], [-1, -0.5, 0.5, 1], [-1, -0.5, 0.5, 1])).T.reshape(-1,4)
-        curiosity_index = [x.tolist() for x in list_of_arrays].index(a.tolist())
-        curiosity_mask = [0] * 256 # Binary array of the action that we are recommending.
-        curiosity_mask[curiosity_index] = 1
+
+        difficulty = 0
+        # beginner
+
+        if difficulty == 0:
+            possible_actions = []
+            for x in list_of_arrays:
+                keep = True
+                for i in range(len(x.tolist())):
+                    if a[i] > 0 > x.tolist()[i]:
+                        keep = False
+                if keep:
+                    possible_actions.append(x.tolist())
+
+            mask = [0] * 256  # Binary array of the action that we are recommending.
+            for possible_action in possible_actions:
+                curiosity_index = [x.tolist() for x in list_of_arrays].index(possible_action)
+                mask[curiosity_index] = 1
+
+        # intermediate
+        elif difficulty == 1:
+            # TODO
+            # 1: 1, 0.5, -0.5
+            # 0.5: 1, 0.5, -0.5
+            # -0.5: -1, -0.5, 0.5
+            # -1: -1, -0.5, 0.5
+            mask = [1] * 256
+
+        # advanced
+        else:
+            mask = [1] * 256
+
         #################################
 
-        return np.array(s), reward, done, {"action_mask": action_mask, "curiosity_mask": curiosity_mask}
+        return np.array(s), reward, done, {"action_mask": mask}
 
 
 
@@ -1166,16 +1207,16 @@ if __name__=="__main__":
         total_reward += r
 
         if steps % 20 == 0 or done:
-
-            print("\naction " + str(["{:+0.2f}".format(x) for x in a]))
-
-            print("step {} total_reward {:+0.2f}".format(steps, total_reward))
-
-            print("hull " + str(["{:+0.2f}".format(x) for x in s[0:4] ]))
-
-            print("leg0 " + str(["{:+0.2f}".format(x) for x in s[4:9] ]))
-
-            print("leg1 " + str(["{:+0.2f}".format(x) for x in s[9:14]]))
+            # print("\naction " + str(["{:+0.2f}".format(x) for x in a]))
+            #
+            # print("step {} total_reward {:+0.2f}".format(steps, total_reward))
+            #
+            # print("hull " + str(["{:+0.2f}".format(x) for x in s[0:4] ]))
+            #
+            # print("leg0 " + str(["{:+0.2f}".format(x) for x in s[4:9] ]))
+            #
+            # print("leg1 " + str(["{:+0.2f}".format(x) for x in s[9:14]]))
+            pass
 
         steps += 1
 
@@ -1198,8 +1239,6 @@ if __name__=="__main__":
         hip_todo  = [0.0, 0.0]
 
         knee_todo = [0.0, 0.0]
-
-
 
         if state==STAY_ON_ONE_LEG:
 
