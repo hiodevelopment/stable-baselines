@@ -1039,6 +1039,8 @@ class BipedalWalker(gym.Env, EzPickle):
 
             done   = True
 
+        print(done)
+
         return np.array(state), reward, done, {}
 
 
