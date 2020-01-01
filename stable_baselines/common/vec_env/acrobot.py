@@ -125,11 +125,17 @@ class AcrobotEnv(core.Env):
         ns[1] = wrap(ns[1], -pi, pi)
         ns[2] = bound(ns[2], -self.MAX_VEL_1, self.MAX_VEL_1)
         ns[3] = bound(ns[3], -self.MAX_VEL_2, self.MAX_VEL_2)
+
+        # The action mask sets the list of valid actions, the curiosity mask defines the control or optimization strategy.
+        # Set the action mask and the curiosity mask. 
+        action_mask = [1, 1, 1]
+        curiosity_mask = [1, 1, 1]
+
         self.state = ns
         terminal = self._terminal()
         reward = -1. if not terminal else 0.
         return (self._get_ob(), reward, terminal,
-                {"action_mask": [1, 1, 1], "curiosity_mask": [1, 1, 1]})
+                {"action_mask": action_mask, "curiosity_mask": curiosity_mask})
 
     def _get_ob(self):
         s = self.state
