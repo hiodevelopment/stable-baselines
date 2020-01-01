@@ -754,7 +754,7 @@ class BipedalWalker(gym.Env, EzPickle):
         #self.hull.ApplyForceToCenter((0, 20), True) -- Uncomment this to receive a bit of stability help
 
         ###### Get expert system actions, then apply epsilon modifications to them #########
-
+        print(a)
         pos = self.hull.position
 
         vel = self.hull.linearVelocity
