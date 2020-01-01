@@ -1029,6 +1029,8 @@ class BipedalWalker(gym.Env, EzPickle):
                 for i in range(len(x.tolist())):
                     if a[i] > 0 > x.tolist()[i]:
                         keep = False
+                    elif a[i] < 0 < x.tolist()[i]:
+                        keep = False
                 if keep:
                     possible_actions.append(x.tolist())
 
@@ -1036,6 +1038,9 @@ class BipedalWalker(gym.Env, EzPickle):
             for possible_action in possible_actions:
                 curiosity_index = [x.tolist() for x in list_of_arrays].index(possible_action)
                 mask[curiosity_index] = 1
+            mask = [1] * 256  # Binary array of the action that we are recommending.
+            curiosity_index = [x.tolist() for x in list_of_arrays].index(a.tolist())
+            mask[curiosity_index] = 1
 
         # intermediate
         elif difficulty == 1:
