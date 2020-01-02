@@ -4,12 +4,13 @@ import stable_baselines.common.vec_env.bipedal_heuristic as bipedal
 
 from stable_baselines import SAC
 from stable_baselines.sac.policies import MlpPolicy
-from stable_baselines.common.vec_env import DummyVecEnv
+#from stable_baselines.common.vec_env import DummyVecEnv
 
-env = DummyVecEnv([bipedal.BipedalWalker])
+#env = DummyVecEnv([bipedal.BipedalWalker])
+env = gym.make('Pendulum-v0')
 
 model = SAC(MlpPolicy, env, verbose=1, tensorboard_log="run/")
-model.learn(total_timesteps=500000)
+model.learn(total_timesteps=500)
 #model.save("continuous_curiosity_mask")
 
 #del model # remove to demonstrate saving and loading
