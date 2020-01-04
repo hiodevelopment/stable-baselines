@@ -8,7 +8,7 @@ env = DummyVecEnv([bipedal.BipedalWalker])
 # env = DummyVecEnv([acrobot.AcrobotEnv])
 
 model = PPO(MlpPolicy, env, verbose=1, tensorboard_log="run/")
-model.learn(250000)
+model.learn(10000)
 
 # model.save("expert_model")
 

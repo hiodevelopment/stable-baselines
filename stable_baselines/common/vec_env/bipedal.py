@@ -860,19 +860,18 @@ class BipedalWalker(gym.Env, EzPickle):
 
 
 
-        reward = 0
-
+        # reward = 0
+        reward = shaping
         if self.prev_shaping is not None:
-
-            reward = shaping - self.prev_shaping
+            pass
+            # reward = shaping - self.prev_shaping
 
         self.prev_shaping = shaping
 
 
-
         for a in action:
-
-            reward -= 0.00035 * MOTORS_TORQUE * np.clip(np.abs(a), 0, 1)
+            pass
+            # reward -= 0.00035 * MOTORS_TORQUE * np.clip(np.abs(a), 0, 1)
 
             # normalized to about -50.0 using heuristic, more optimal agent should spend less
 
