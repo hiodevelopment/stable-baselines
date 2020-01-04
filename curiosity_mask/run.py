@@ -1,4 +1,4 @@
-import stable_baselines.common.vec_env.bipedal as bipedal
+import stable_baselines.common.vec_env.bipedal_heuristic as bipedal
 #import stable_baselines.common.vec_env.acrobot as acrobot
 from stable_baselines import PPO2 as PPO
 from stable_baselines.common.policies import MlpPolicy
@@ -9,7 +9,7 @@ env = DummyVecEnv([bipedal.BipedalWalker])
 
 model = PPO(MlpPolicy, env, verbose=1, tensorboard_log="run/")
 model.learn(10000)
-
+model.learn(250)
 # model.save("expert_model")
 
 # Enjoy trained agent

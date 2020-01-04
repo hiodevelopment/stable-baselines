@@ -280,10 +280,7 @@ class BipedalWalker(gym.Env, EzPickle):
 
         high = np.array([np.inf] * 24)
 
-        #self.action_space = spaces.Box(np.array([-1, -1, -1, -1]), np.array([1, 1, 1, 1]), dtype=np.float32)
-        # Discretizing the action space to support the action and curiosity masks: [-1, -0.5, 0.5, 1.0] for each action. 
-
-        self.action_space = spaces.Discrete(256)
+        self.action_space = spaces.Box(np.array([-1, -1, -1, -1]), np.array([1, 1, 1, 1]), dtype=np.float32)
 
         self.observation_space = spaces.Box(-high, high, dtype=np.float32)
 
@@ -744,18 +741,19 @@ class BipedalWalker(gym.Env, EzPickle):
                 return 0
 
         self.lidar = [LidarCallback() for _ in range(10)]
-        return self.step(np.array(0))[0] #self.step(np.array([0,0,0,0]))[0]
 
 
 
-    def step(self, action_discrete):
+        return self.step(np.array([0,0,0,0]))[0]
 
-        # self.hull.ApplyForceToCenter((0, 20), True) -- Uncomment this to receive a bit of stability help
+
+
+    def step(self, action):
+
+        #self.hull.ApplyForceToCenter((0, 20), True) -- Uncomment this to receive a bit of stability help
+
         control_speed = False  # Should be easier as well
 
-        act = np.array(np.meshgrid([-1, -0.5, 0.5, 1], [-1, -0.5, 0.5, 1], [-1, -0.5, 0.5, 1], [-1, -0.5, 0.5, 1])).T.reshape(-1,4) 
-        action = act[action_discrete]
-        
         if control_speed:
 
             self.joints[0].motorSpeed = float(SPEED_HIP  * np.clip(action[0], -1, 1))
@@ -860,18 +858,19 @@ class BipedalWalker(gym.Env, EzPickle):
 
 
 
-        # reward = 0
-        reward = shaping
+        reward = 0
+
         if self.prev_shaping is not None:
-            pass
-            # reward = shaping - self.prev_shaping
+
+            reward = shaping - self.prev_shaping
 
         self.prev_shaping = shaping
 
 
+
         for a in action:
-            pass
-            # reward -= 0.00035 * MOTORS_TORQUE * np.clip(np.abs(a), 0, 1)
+
+            reward -= 0.00035 * MOTORS_TORQUE * np.clip(np.abs(a), 0, 1)
 
             # normalized to about -50.0 using heuristic, more optimal agent should spend less
 
@@ -889,174 +888,7 @@ class BipedalWalker(gym.Env, EzPickle):
 
             done   = True
 
-        # The action mask sets the list of valid actions, the curiosity mask defines the control or optimization strategy.
-        #### Set the curiosity mask. ####
-        a = np.array([0.0, 0.0, 0.0, 0.0])
-        s = state
-
-        STAY_ON_ONE_LEG, PUT_OTHER_DOWN, PUSH_OFF = 1,2,3
-
-        SPEED = 0.29  # Will fall forward on higher speed
-
-        state = STAY_ON_ONE_LEG
-
-        moving_leg = 0
-
-        supporting_leg = 1 - moving_leg
-
-        SUPPORT_KNEE_ANGLE = +0.1
-
-        supporting_knee_angle = SUPPORT_KNEE_ANGLE
-
-        contact0 = s[8]
-
-        contact1 = s[13]
-
-        moving_s_base = 4 + 5*moving_leg
-
-        supporting_s_base = 4 + 5*supporting_leg
-
-        hip_targ  = [None,None]   # -0.8 .. +1.1
-
-        knee_targ = [None,None]   # -0.6 .. +0.9
-
-        hip_todo  = [0.0, 0.0]
-
-        knee_todo = [0.0, 0.0]
-
-        if state==STAY_ON_ONE_LEG:
-
-            hip_targ[moving_leg]  = 1.1
-
-            knee_targ[moving_leg] = -0.6
-
-            supporting_knee_angle += 0.03
-
-            if s[2] > SPEED: supporting_knee_angle += 0.03
-
-            supporting_knee_angle = min( supporting_knee_angle, SUPPORT_KNEE_ANGLE )
-
-            knee_targ[supporting_leg] = supporting_knee_angle
-
-            if s[supporting_s_base+0] < 0.10: # supporting leg is behind
-
-                state = PUT_OTHER_DOWN
-
-        if state==PUT_OTHER_DOWN:
-
-            hip_targ[moving_leg]  = +0.1
-
-            knee_targ[moving_leg] = SUPPORT_KNEE_ANGLE
-
-            knee_targ[supporting_leg] = supporting_knee_angle
-
-            if s[moving_s_base+4]:
-
-                state = PUSH_OFF
-
-                supporting_knee_angle = min( s[moving_s_base+2], SUPPORT_KNEE_ANGLE )
-
-        if state==PUSH_OFF:
-
-            knee_targ[moving_leg] = supporting_knee_angle
-
-            knee_targ[supporting_leg] = +1.0
-
-            if s[supporting_s_base+2] > 0.88 or s[2] > 1.2*SPEED:
-
-                state = STAY_ON_ONE_LEG
-
-                moving_leg = 1 - moving_leg
-
-                supporting_leg = 1 - moving_leg
-
-        if hip_targ[0]: hip_todo[0] = 0.9*(hip_targ[0] - s[4]) - 0.25*s[5]
-
-        if hip_targ[1]: hip_todo[1] = 0.9*(hip_targ[1] - s[9]) - 0.25*s[10]
-
-        if knee_targ[0]: knee_todo[0] = 4.0*(knee_targ[0] - s[6])  - 0.25*s[7]
-
-        if knee_targ[1]: knee_todo[1] = 4.0*(knee_targ[1] - s[11]) - 0.25*s[12]
-
-        hip_todo[0] -= 0.9*(0-s[0]) - 1.5*s[1] # PID to keep head strait
-
-        hip_todo[1] -= 0.9*(0-s[0]) - 1.5*s[1]
-
-        knee_todo[0] -= 15.0*s[3]  # vertical speed, to damp oscillations
-
-        knee_todo[1] -= 15.0*s[3]
-
-        possible_actions = [-1.0, -0.5, 0.5, 1.0]
-
-        a[0] = possible_actions[min(range(len(possible_actions)), key = lambda i: abs(possible_actions[i]-hip_todo[0]))] # closest to: hip_todo[0]
-
-        a[1] = possible_actions[min(range(len(possible_actions)), key = lambda i: abs(possible_actions[i]-knee_todo[0]))] # closest to: knee_todo[0]
-
-        a[2] = possible_actions[min(range(len(possible_actions)), key = lambda i: abs(possible_actions[i]-hip_todo[1]))] # closest to: hip_todo[1]
-
-        a[3] = possible_actions[min(range(len(possible_actions)), key = lambda i: abs(possible_actions[i]-knee_todo[1]))] # closest to: knee_todo[1]
-
-        # Pack this up into an array and find the index of that value in the action array.
-
-        # a = np.clip(0.5*a, -1.0, 1.0)
-        action_mask = [1] * 256 # All actions are valid.
-
-        # figure out what leg to move next
-        # state
-        # set those values to 1 in cur mask
-        #         a[0] = hip_todo[0]
-        #
-        #         a[1] = knee_todo[0]
-        #
-        #         a[2] = hip_todo[1]
-        #
-        #         a[3] = knee_todo[1]
-        # beginning, a + small eps
-        # middle, a + medium eps
-        # adv, a + large eps
-        # expert, all actions valid
-
-        list_of_arrays = np.array(np.meshgrid([-1, -0.5, 0.5, 1], [-1, -0.5, 0.5, 1], [-1, -0.5, 0.5, 1], [-1, -0.5, 0.5, 1])).T.reshape(-1,4)
-
-        difficulty = 0
-        # beginner
-
-        if difficulty == 0:
-            possible_actions = []
-            for x in list_of_arrays:
-                keep = True
-                for i in range(len(x.tolist())):
-                    if a[i] > 0 > x.tolist()[i]:
-                        keep = False
-                    elif a[i] < 0 < x.tolist()[i]:
-                        keep = False
-                if keep:
-                    possible_actions.append(x.tolist())
-
-            mask = [0] * 256  # Binary array of the action that we are recommending.
-            for possible_action in possible_actions:
-                curiosity_index = [x.tolist() for x in list_of_arrays].index(possible_action)
-                mask[curiosity_index] = 1
-            mask = [1] * 256  # Binary array of the action that we are recommending.
-            curiosity_index = [x.tolist() for x in list_of_arrays].index(a.tolist())
-            mask[curiosity_index] = 1
-
-        # intermediate
-        elif difficulty == 1:
-            # TODO
-            # 1: 1, 0.5, -0.5
-            # 0.5: 1, 0.5, -0.5
-            # -0.5: -1, -0.5, 0.5
-            # -1: -1, -0.5, 0.5
-            mask = [1] * 256
-
-        # advanced
-        else:
-            mask = [1] * 256
-
-        #################################
-
-        return np.array(s), reward, done, {"action_mask": mask}
+        return np.array(state), reward, done, {}
 
 
 
@@ -1172,7 +1004,7 @@ class BipedalWalker(gym.Env, EzPickle):
 
 class BipedalWalkerHardcore(BipedalWalker):
 
-    hardcore = False
+    hardcore = True
 
 
 
@@ -1211,16 +1043,16 @@ if __name__=="__main__":
         total_reward += r
 
         if steps % 20 == 0 or done:
-            # print("\naction " + str(["{:+0.2f}".format(x) for x in a]))
-            #
-            # print("step {} total_reward {:+0.2f}".format(steps, total_reward))
-            #
-            # print("hull " + str(["{:+0.2f}".format(x) for x in s[0:4] ]))
-            #
-            # print("leg0 " + str(["{:+0.2f}".format(x) for x in s[4:9] ]))
-            #
-            # print("leg1 " + str(["{:+0.2f}".format(x) for x in s[9:14]]))
-            pass
+
+            print("\naction " + str(["{:+0.2f}".format(x) for x in a]))
+
+            print("step {} total_reward {:+0.2f}".format(steps, total_reward))
+
+            print("hull " + str(["{:+0.2f}".format(x) for x in s[0:4] ]))
+
+            print("leg0 " + str(["{:+0.2f}".format(x) for x in s[4:9] ]))
+
+            print("leg1 " + str(["{:+0.2f}".format(x) for x in s[9:14]]))
 
         steps += 1
 
@@ -1243,6 +1075,8 @@ if __name__=="__main__":
         hip_todo  = [0.0, 0.0]
 
         knee_todo = [0.0, 0.0]
+
+
 
         if state==STAY_ON_ONE_LEG:
 
@@ -1311,7 +1145,17 @@ if __name__=="__main__":
         knee_todo[1] -= 15.0*s[3]
 
 
+        possible_actions = [-0.5, -0.4, -0.3, -0.2, -0.1, -0.05, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5]
 
+        a[0] = possible_actions[min(range(len(possible_actions)), key = lambda i: abs(possible_actions[i]-hip_todo[0]))] # closest to: hip_todo[0]
+
+        a[1] = possible_actions[min(range(len(possible_actions)), key = lambda i: abs(possible_actions[i]-knee_todo[0]))] # closest to: knee_todo[0]
+
+        a[2] = possible_actions[min(range(len(possible_actions)), key = lambda i: abs(possible_actions[i]-hip_todo[1]))] # closest to: hip_todo[1]
+
+        a[3] = possible_actions[min(range(len(possible_actions)), key = lambda i: abs(possible_actions[i]-knee_todo[1]))] # closest to: knee_todo[1]
+        
+        """
         a[0] = hip_todo[0]
 
         a[1] = knee_todo[0]
@@ -1321,7 +1165,7 @@ if __name__=="__main__":
         a[3] = knee_todo[1]
 
         a = np.clip(0.5*a, -1.0, 1.0)
-
+        """
 
 
         env.render()
