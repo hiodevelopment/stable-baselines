@@ -11,8 +11,8 @@ import stable_baselines.common.vec_env.bipedal_heuristic_selector as bipedal
 env = DummyVecEnv([bipedal.BipedalWalker])
 
 # Initialize and train agent.
-model = PPO2('MlpPolicy', env, verbose=0, tensorboard_log="./logs/")
-model.learn(total_timesteps=5000, tb_log_name="Walker PPO2 - Discrete Curiosity Mask, Testing")
+model = PPO2('MlpPolicy', env, verbose=1, tensorboard_log="./logs/")
+model.learn(total_timesteps=1000000, tb_log_name="Walker PPO2 - Discrete Curiosity Mask, Run 1")
 
 # Evaluate the agent.
 mean_reward, n_steps = evaluate_policy(model, model.get_env(), n_eval_episodes=1)

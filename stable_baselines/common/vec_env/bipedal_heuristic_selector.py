@@ -850,7 +850,19 @@ class BipedalWalker(gym.Env, EzPickle):
         
         if self.iterations == 1: # Beginning of the episode, just starting to walk. 
 
-            if leg_1_hip > leg_2_hip: # Leg 1 is already forward.
+            if leg_1_contact == 1 and leg_2_contact == 0:  # Leg 1 is only one touching the ground.
+
+                moving_leg = 1
+
+                supporting_leg = 0
+            
+            elif leg_1_contact == 0 and leg_2_contact == 1:  # Leg 2 is only one touching the ground.
+
+                moving_leg = 0
+
+                supporting_leg = 1
+
+            elif leg_1_hip > leg_2_hip: # Both legs are touching the ground and Leg 1 is already forward.
             
                 moving_leg = 0
 
@@ -890,7 +902,7 @@ class BipedalWalker(gym.Env, EzPickle):
 
             expert_act = 0
 
-        print('Iteration: ', self.iterations, 'Leading Leg: ', 0 if leg_1_hip > leg_2_hip else 1, 'Leg Details: ', leg_1_contact, leg_1_hip, leg_2_contact, leg_2_hip, 'Gait: ', self.gait, 'Action: ', expert_act, 'BRAIN: ', act, 'Mask: ', self.action_mask)
+        #print('Iteration: ', self.iterations, 'Leading Leg: ', 0 if leg_1_hip > leg_2_hip else 1, 'Leg Details: ', leg_1_contact, leg_1_hip, leg_2_contact, leg_2_hip, 'Gait: ', self.gait, 'Action: ', expert_act, 'BRAIN: ', act, 'Mask: ', self.action_mask)
         
         #act = expert_act
 
@@ -1079,27 +1091,32 @@ class BipedalWalker(gym.Env, EzPickle):
 
         done = False
 
+        
         if self.game_over or pos[0] < 0:  # Fell over
 
-            #reward -= 50
-
             done   = True
+
+            if pos[0] < 0:
+
+                reward -= 100
+
+            #reward -= 50
 
         if pos[0] > (TERRAIN_LENGTH-TERRAIN_GRASS)*TERRAIN_STEP:
 
             done   = True
 
-        if self.iterations > 300:
+        #if self.iterations > 300:
+
+            #done = True
+
+        if self.iterations > 50 and state[2] <= 0: # Stuck
 
             done = True
 
-        if state[2] == 0: # Stuck
+            #reward -= 100
 
-            done = True
-
-            reward -= 100
-
-        self.render()
+        #self.render()
 
         self.iterations += 1
 
@@ -1107,19 +1124,100 @@ class BipedalWalker(gym.Env, EzPickle):
 
         mask = [0] * 3
 
-        mask[expert_act] = 1
+        ### Calculate Mask
+
+        SPEED = 0.29  # Will fall forward on higher speed
+
+        s = self.current_state
+
+        SUPPORT_KNEE_ANGLE = 0.1
+
+        supporting_knee_angle = self.support_knee_angle
+        
+        leg_1_contact = s[8]
+
+        leg_1_hip = s[4]
+
+        leg_2_contact = s[13]
+
+        leg_2_hip = s[9]
+
+        #### Which leg is which?
+        # If we are starting, the leg with the shallowest hip angle is the supporting leg
+        # If we are already walking, the moving and supporting legs are already defined. 
+
+        
+        
+        if self.iterations == 1: # Beginning of the episode, just starting to walk. 
+
+            if leg_1_contact == 1 and leg_2_contact == 0:  # Leg 1 is only one touching the ground.
+
+                moving_leg = 1
+
+                supporting_leg = 0
+            
+            elif leg_1_contact == 0 and leg_2_contact == 1:  # Leg 2 is only one touching the ground.
+
+                moving_leg = 0
+
+                supporting_leg = 1
+
+            elif leg_1_hip > leg_2_hip: # Both legs are touching the ground and Leg 1 is already forward.
+            
+                moving_leg = 0
+
+                supporting_leg = 1
+
+            else:  # Leg 2 is already forward.
+
+                moving_leg = 1
+
+                supporting_leg = 0
+
+        else: # Already walking
+
+            moving_leg = self.moving_leg
+
+            supporting_leg = self.supporting_leg
+
+        moving_s_base = 4 + 5*moving_leg
+
+        supporting_s_base = 4 + 5*supporting_leg
+        
+        hip_targ  = [None,None]   # -0.8 .. +1.1
+
+        knee_targ = [None,None]   # -0.6 .. +0.9
+
+        calculate_mask = [self.gait]
+
+        mask_width = 0.2
+
+        if self.gait == 0 and s[supporting_s_base+0] > 0.10*(1 -mask_width) and s[supporting_s_base+0] < 0.10*(1 + mask_width): # < 0.10, supporting leg is behind
+
+            # Between x and y thresholds, give option of 0 or 1
+
+            calculate_mask = [0,1]
+
+        if self.gait == 1 and s[moving_s_base+4]:
+
+            # Between x and y thresholds, give option of 1 or 2
+            
+            calculate_mask = [1] #[1,2]
+
+        if self.gait == 2 and ((s[supporting_s_base+2] > 0.88*(1 -mask_width) and s[supporting_s_base+2] < 0.88*(1 + mask_width)) or (s[2] > 1.2*(1 - mask_width)*SPEED and s[2] < 1.2*(1 + mask_width)*SPEED)):  # > 0.88, > 1.2
+
+            # Between x and y thresholds, give option of 2 or 0
+            
+            calculate_mask = [2,0]
+
+        ####
+
+        for i in calculate_mask: 
+            mask[i] = 1
 
         #mask[0] = 1
 
         self.action_mask = mask
-
-        #mask[expert_act] = 1 # only allow the previous expert action
-
-        #action_mask = heuristic[1] # populate curiosity mask with the gait phase that the expert system recommends.
-
-        #if False:  # Give the option of moving to the next gait phase earlier or later than expert system. 
-
-            #action_mask.append((heuristic[1] + 1) % 3)  # append additional options based on the state of the mask.
         
         return np.array(state), reward, done, {"action_mask": mask}
 
