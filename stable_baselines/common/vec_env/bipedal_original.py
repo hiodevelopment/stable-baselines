@@ -229,19 +229,6 @@ class BipedalWalker(gym.Env, EzPickle):
         self.viewer = None
 
 
-        self.iterations = 0
-
-        self.current_state = [0]*24
-
-        self.action_mask = []
-
-        self.gait = 0
-
-        self.support_knee_angle = 0.1
-
-        self.moving_leg = None
-
-        self.supporting_leg = None
 
         self.world = Box2D.b2World()
 
@@ -293,7 +280,7 @@ class BipedalWalker(gym.Env, EzPickle):
 
         high = np.array([np.inf] * 24)
 
-        self.action_space = spaces.Discrete(3)
+        self.action_space = spaces.Box(np.array([-1, -1, -1, -1]), np.array([1, 1, 1, 1]), dtype=np.float32)
 
         self.observation_space = spaces.Box(-high, high, dtype=np.float32)
 
@@ -591,18 +578,6 @@ class BipedalWalker(gym.Env, EzPickle):
 
     def reset(self):
 
-        self.iterations = 0
-        
-        #self.current_state = [0]*24
-
-        self.gait = 0
-
-        self.support_knee_angle = 0.1
-
-        self.moving_leg = 0
-
-        self.supporting_leg = 1
-
         self._destroy()
 
         self.world.contactListener_bug_workaround = ContactDetector(self)
@@ -767,203 +742,16 @@ class BipedalWalker(gym.Env, EzPickle):
 
         self.lidar = [LidarCallback() for _ in range(10)]
 
-        pos = self.hull.position
-        
-        vel = self.hull.linearVelocity
-
-        complete_state = self.step(0)
-
-        self.action_mask = complete_state[3]['action_mask']
-
-        self.current_state = complete_state[0]
-
-        return np.array(self.current_state)
 
 
-    def run_heuristic(self, s, hip_targ, knee_targ):
-
-        a = np.array([0.0, 0.0, 0.0, 0.0])
-
-        hip_todo  = [0.0, 0.0]
-
-        knee_todo = [0.0, 0.0]
-
-        if hip_targ[0]: hip_todo[0] = 0.9*(hip_targ[0] - s[4]) - 0.25*s[5]
-
-        if hip_targ[1]: hip_todo[1] = 0.9*(hip_targ[1] - s[9]) - 0.25*s[10]
-
-        if knee_targ[0]: knee_todo[0] = 4.0*(knee_targ[0] - s[6])  - 0.25*s[7]
-
-        if knee_targ[1]: knee_todo[1] = 4.0*(knee_targ[1] - s[11]) - 0.25*s[12]
+        return self.step(np.array([0,0,0,0]))[0]
 
 
 
-        hip_todo[0] -= 0.9*(0-s[0]) - 1.5*s[1] # PID to keep head strait
-
-        hip_todo[1] -= 0.9*(0-s[0]) - 1.5*s[1]
-
-        knee_todo[0] -= 15.0*s[3]  # vertical speed, to damp oscillations
-
-        knee_todo[1] -= 15.0*s[3]
-
-
-
-        a[0] = hip_todo[0]
-
-        a[1] = knee_todo[0]
-
-        a[2] = hip_todo[1]
-
-        a[3] = knee_todo[1]
-
-        a = np.clip(0.5*a, -1.0, 1.0)
-
-        return a
-
-    def step(self, act):
+    def step(self, action):
 
         #self.hull.ApplyForceToCenter((0, 20), True) -- Uncomment this to receive a bit of stability help
 
-        #print(act, self.current_state[0], type(self.current_state[0]), self.current_state[2])
-        
-        SPEED = 0.29  # Will fall forward on higher speed
-
-        s = self.current_state
-
-        SUPPORT_KNEE_ANGLE = 0.1
-
-        supporting_knee_angle = self.support_knee_angle
-        
-        leg_1_contact = s[8]
-
-        leg_1_hip = s[4]
-
-        leg_2_contact = s[13]
-
-        leg_2_hip = s[9]
-
-        #### Which leg is which?
-        # If we are starting, the leg with the shallowest hip angle is the supporting leg
-        # If we are already walking, the moving and supporting legs are already defined. 
-
-        
-        
-        if self.iterations == 1: # Beginning of the episode, just starting to walk. 
-
-            if leg_1_contact == 1 and leg_2_contact == 0:  # Leg 1 is only one touching the ground.
-
-                moving_leg = 1
-
-                supporting_leg = 0
-            
-            elif leg_1_contact == 0 and leg_2_contact == 1:  # Leg 2 is only one touching the ground.
-
-                moving_leg = 0
-
-                supporting_leg = 1
-
-            elif leg_1_hip > leg_2_hip: # Both legs are touching the ground and Leg 1 is already forward.
-            
-                moving_leg = 0
-
-                supporting_leg = 1
-
-            else:  # Leg 2 is already forward.
-
-                moving_leg = 1
-
-                supporting_leg = 0
-
-        else: # Already walking
-
-            moving_leg = self.moving_leg
-
-            supporting_leg = self.supporting_leg
-
-        moving_s_base = 4 + 5*moving_leg
-
-        supporting_s_base = 4 + 5*supporting_leg
-        
-        hip_targ  = [None,None]   # -0.8 .. +1.1
-
-        knee_targ = [None,None]   # -0.6 .. +0.9
-
-        expert_act = self.gait
-
-        if self.gait == 0 and s[supporting_s_base+0] < 0.10: # supporting leg is behind
-
-            expert_act = 1
-
-        if self.gait == 1 and s[moving_s_base+4]:
-
-            expert_act = 2
-
-        if self.gait == 2 and (s[supporting_s_base+2] > 0.88 or s[2] > 1.2*SPEED):
-
-            expert_act = 0
-
-        #print('Iteration: ', self.iterations, 'Leading Leg: ', 0 if leg_1_hip > leg_2_hip else 1, 'Leg Details: ', leg_1_contact, leg_1_hip, leg_2_contact, leg_2_hip, 'Gait: ', self.gait, 'Action: ', expert_act, 'BRAIN: ', act, 'Mask: ', self.action_mask)
-        
-        #act = expert_act
-
-        ########
-        
-        if act == 0: # Gait phase 1, Stay on one leg. 
-
-            if self.gait != 0: # We just transitioned from gait phase 3
-
-                moving_leg = 1 - moving_leg
-
-                supporting_leg = 1 - moving_leg
-            
-            hip_targ[moving_leg]  = 1.1  # lift your leading leg
-
-            knee_targ[moving_leg] = -0.6  # lift your leading leg
-
-            supporting_knee_angle += 0.03  # lift your leading leg
-
-            if s[2] > SPEED: 
-                
-                supporting_knee_angle += 0.03
-
-            supporting_knee_angle = min( supporting_knee_angle, SUPPORT_KNEE_ANGLE )
-
-            knee_targ[supporting_leg] = supporting_knee_angle
-
-        if act == 1: # Gait phase 2, Put other leg down. 
-
-            hip_targ[moving_leg]  = +0.1
-
-            knee_targ[moving_leg] = SUPPORT_KNEE_ANGLE
-
-            knee_targ[supporting_leg] = supporting_knee_angle
- 
-        if act == 2: # Gait phase 3, Push off. 
-
-            if self.gait != 2: # We just tranisitioned from gait phase 2
-
-                supporting_knee_angle = min( s[moving_s_base+2], SUPPORT_KNEE_ANGLE )
-
-            knee_targ[moving_leg] = supporting_knee_angle
-
-            knee_targ[supporting_leg] = +1.0
-
-        self.gait = act
-        
-        self.support_knee_angle = supporting_knee_angle
-
-        self.moving_leg = moving_leg
-
-        self.supporting_leg = supporting_leg
-
-        if self.iterations == 0:
-
-            action = np.array([0.0, 0.0, 0.0, 0.0])  # Return initial state on reset.
-
-        else:
-
-            action = self.run_heuristic(self.current_state, hip_targ, knee_targ) # Run the heuristic to generate the action. 
-       
         control_speed = False  # Should be easier as well
 
         if control_speed:
@@ -1021,56 +809,44 @@ class BipedalWalker(gym.Env, EzPickle):
             self.world.RayCast(self.lidar[i], self.lidar[i].p1, self.lidar[i].p2)
 
 
-        if self.iterations == 0:
 
-            # Get state from saved point. 
-            
-            state = np.loadtxt(fname="logs/state2to3.csv", delimiter=',', usecols=(0), unpack=True)
+        state = [
 
-            #print(state)
+            self.hull.angle,        # Normal angles up to 0.5 here, but sure more is possible.
 
-            #quit()
+            2.0*self.hull.angularVelocity/FPS,
 
-        else:
+            0.3*vel.x*(VIEWPORT_W/SCALE)/FPS,  # Normalized to get -1..1 range
 
-            state = [
+            0.3*vel.y*(VIEWPORT_H/SCALE)/FPS,
 
-                self.hull.angle,        # Normal angles up to 0.5 here, but sure more is possible.
+            self.joints[0].angle,   # This will give 1.1 on high up, but it's still OK (and there should be spikes on hiting the ground, that's normal too)
 
-                2.0*self.hull.angularVelocity/FPS,
+            self.joints[0].speed / SPEED_HIP,
 
-                0.3*vel.x*(VIEWPORT_W/SCALE)/FPS,  # Normalized to get -1..1 range
+            self.joints[1].angle + 1.0,
 
-                0.3*vel.y*(VIEWPORT_H/SCALE)/FPS,
+            self.joints[1].speed / SPEED_KNEE,
 
-                self.joints[0].angle,   # This will give 1.1 on high up, but it's still OK (and there should be spikes on hiting the ground, that's normal too)
+            1.0 if self.legs[1].ground_contact else 0.0,
 
-                self.joints[0].speed / SPEED_HIP,
+            self.joints[2].angle,
 
-                self.joints[1].angle + 1.0,
+            self.joints[2].speed / SPEED_HIP,
 
-                self.joints[1].speed / SPEED_KNEE,
+            self.joints[3].angle + 1.0,
 
-                1.0 if self.legs[1].ground_contact else 0.0,
+            self.joints[3].speed / SPEED_KNEE,
 
-                self.joints[2].angle,
+            1.0 if self.legs[3].ground_contact else 0.0
 
-                self.joints[2].speed / SPEED_HIP,
+            ]
 
-                self.joints[3].angle + 1.0,
-
-                self.joints[3].speed / SPEED_KNEE,
-
-                1.0 if self.legs[3].ground_contact else 0.0
-
-                ]
-
-            state += [l.fraction for l in self.lidar]
+        state += [l.fraction for l in self.lidar]
 
         assert len(state)==24
 
 
-        self.current_state = state
 
         self.scroll = pos.x - VIEWPORT_W/SCALE/5
 
@@ -1092,9 +868,9 @@ class BipedalWalker(gym.Env, EzPickle):
 
 
 
-        #for a in action:
+        for a in action:
 
-            #reward -= 0.00035 * MOTORS_TORQUE * np.clip(np.abs(a), 0, 1)
+            reward -= 0.00035 * MOTORS_TORQUE * np.clip(np.abs(a), 0, 1)
 
             # normalized to about -50.0 using heuristic, more optimal agent should spend less
 
@@ -1102,152 +878,17 @@ class BipedalWalker(gym.Env, EzPickle):
 
         done = False
 
-        
-        if self.game_over or pos[0] < 0:  # Fell over
+        if self.game_over or pos[0] < 0:
+
+            reward = -100
 
             done   = True
-
-            if pos[0] < 0:
-
-                reward -= 100
-
-            #reward -= 50
 
         if pos[0] > (TERRAIN_LENGTH-TERRAIN_GRASS)*TERRAIN_STEP:
 
             done   = True
 
-        #if self.iterations > 300:
-
-            #done = True
-
-        if self.iterations > 50 and state[2] <= 0: # Stuck
-
-            done = True
-
-            reward -= 100
-
-        #self.render()
-
-        self.iterations += 1
-
-        # Apply the action mask and the curiosity mask for the next action
-
-        mask = [0] * 3
-
-        ### Calculate Mask
-
-        SPEED = 0.29  # Will fall forward on higher speed
-
-        s = self.current_state
-
-        SUPPORT_KNEE_ANGLE = 0.1
-
-        supporting_knee_angle = self.support_knee_angle
-        
-        leg_1_contact = s[8]
-
-        leg_1_hip = s[4]
-
-        leg_2_contact = s[13]
-
-        leg_2_hip = s[9]
-
-        #### Which leg is which?
-        # If we are starting, the leg with the shallowest hip angle is the supporting leg
-        # If we are already walking, the moving and supporting legs are already defined. 
-
-        
-        
-        if self.iterations == 1: # Beginning of the episode, just starting to walk. 
-
-            if leg_1_contact == 1 and leg_2_contact == 0:  # Leg 1 is only one touching the ground.
-
-                moving_leg = 1
-
-                supporting_leg = 0
-            
-            elif leg_1_contact == 0 and leg_2_contact == 1:  # Leg 2 is only one touching the ground.
-
-                moving_leg = 0
-
-                supporting_leg = 1
-
-            elif leg_1_hip > leg_2_hip: # Both legs are touching the ground and Leg 1 is already forward.
-            
-                moving_leg = 0
-
-                supporting_leg = 1
-
-            else:  # Leg 2 is already forward.
-
-                moving_leg = 1
-
-                supporting_leg = 0
-
-        else: # Already walking
-
-            moving_leg = self.moving_leg
-
-            supporting_leg = self.supporting_leg
-
-        moving_s_base = 4 + 5*moving_leg
-
-        supporting_s_base = 4 + 5*supporting_leg
-        
-        hip_targ  = [None,None]   # -0.8 .. +1.1
-
-        knee_targ = [None,None]   # -0.6 .. +0.9
-
-        calculate_mask = [self.gait]
-
-        mask_width = 0.1
-
-        if self.gait == 0: # < 0.10, supporting leg is behind
-
-            calculate_mask = [0]
-            
-            # Between x and y thresholds, give option of 0 or 1
-
-            if s[supporting_s_base+0] > 0.10*(1 - mask_width) and s[supporting_s_base+0] < 0.10*(1 + mask_width):
-
-                calculate_mask.append(1)
-
-        if self.gait == 1:
-
-            calculate_mask = [1] 
-
-            # Between x and y thresholds, give option of 1 or 2
-
-            if s[moving_s_base+4]:
-
-                calculate_mask = [2]
-
-        if self.gait == 2: 
-
-            # Between x and y thresholds, give option of 2 or 0
-            
-            calculate_mask = [2]
-
-            if ((s[supporting_s_base+2] > 0.88*(1 - mask_width) and s[supporting_s_base+2] < 0.88*(1 + mask_width)) or (s[2] > 1.2*(1 - mask_width)*SPEED and s[2] < 1.2*(1 + mask_width)*SPEED)):  # > 0.88, > 1.2
-
-                calculate_mask.append(0)
-
-        ####
-
-        for i in calculate_mask: 
-            mask[i] = 1
-
-        #mask[0] = 1
-
-        if self.iterations > 1 and self.action_mask[act] == 0:
-            print('Mask Error')
-            #quit()
-
-        self.action_mask = mask
-        
-        return np.array(state), reward, done, {"action_mask": mask}
-
+        return np.array(state), reward, done, {}
 
 
 
@@ -1359,8 +1000,6 @@ class BipedalWalker(gym.Env, EzPickle):
 
             self.viewer = None
 
-    
-
 
 
 class BipedalWalkerHardcore(BipedalWalker):
@@ -1456,6 +1095,10 @@ if __name__=="__main__":
             if s[supporting_s_base+0] < 0.10: # supporting leg is behind
 
                 state = PUT_OTHER_DOWN
+
+                #np.savetxt("state2to3.csv", s, delimiter=",", fmt='%s')
+
+                #quit()
 
         if state==PUT_OTHER_DOWN:
 
