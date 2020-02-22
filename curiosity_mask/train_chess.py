@@ -20,7 +20,7 @@ def callback(_locals, _globals):
         # Set Masks
         piece_mask = [1] * 16
         position_mask = [1] * 64
-        updated_masks = {'piece_mask' : piece_mask, 'position_mask' : position_mask}
+        updated_masks = {'action_mask' : [piece_mask, position_mask]}
         env.infos.update(updated_masks)
     n_steps += 1
     return True
