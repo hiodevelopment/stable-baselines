@@ -82,7 +82,7 @@ SCALE  = 30.0   # affects how fast-paced the game is, forces should be adjusted 
 
 
 
-MOTORS_TORQUE = 80
+MOTORS_TORQUE = 160 #80
 
 SPEED_HIP     = 4
 
@@ -849,7 +849,7 @@ class BipedalWalker(gym.Env, EzPickle):
         
         
         if self.iterations == 1: # Beginning of the episode, just starting to walk. 
-
+            
             if leg_1_contact == 1 and leg_2_contact == 0:  # Leg 1 is only one touching the ground.
 
                 moving_leg = 1
@@ -902,7 +902,7 @@ class BipedalWalker(gym.Env, EzPickle):
 
             expert_act = 0
 
-        #print('Iteration: ', self.iterations, 'Leading Leg: ', 0 if leg_1_hip > leg_2_hip else 1, 'Leg Details: ', leg_1_contact, leg_1_hip, leg_2_contact, leg_2_hip, 'Gait: ', self.gait, 'Action: ', expert_act, 'BRAIN: ', act, 'Mask: ', self.action_mask)
+        print('Iteration: ', self.iterations, 'Leading Leg: ', 0 if leg_1_hip > leg_2_hip else 1, 'Leg Details: ', leg_1_contact, leg_1_hip, leg_2_contact, leg_2_hip, 'Gait: ', self.gait, 'Action: ', expert_act, 'BRAIN: ', act, 'Mask: ', self.action_mask)
         
         #act = expert_act
 
@@ -1021,7 +1021,7 @@ class BipedalWalker(gym.Env, EzPickle):
             self.world.RayCast(self.lidar[i], self.lidar[i].p1, self.lidar[i].p2)
 
 
-        if self.iterations == 0:
+        if False: #self.iterations == 0:
 
             # Get state from saved point. 
             
@@ -1121,13 +1121,13 @@ class BipedalWalker(gym.Env, EzPickle):
 
             #done = True
 
-        if self.iterations > 50 and state[2] <= 0: # Stuck
+        if self.iterations > 150 and state[2] <= 0: # Stuck
 
             done = True
 
             reward -= 100
 
-        #self.render()
+        self.render()
 
         self.iterations += 1
 
@@ -1137,7 +1137,7 @@ class BipedalWalker(gym.Env, EzPickle):
 
         ### Calculate Mask
 
-        SPEED = 0.29  # Will fall forward on higher speed
+        #SPEED = 0.29  # Will fall forward on higher speed
 
         s = self.current_state
 
@@ -1161,6 +1161,7 @@ class BipedalWalker(gym.Env, EzPickle):
         
         if self.iterations == 1: # Beginning of the episode, just starting to walk. 
 
+            
             if leg_1_contact == 1 and leg_2_contact == 0:  # Leg 1 is only one touching the ground.
 
                 moving_leg = 1
@@ -1201,7 +1202,7 @@ class BipedalWalker(gym.Env, EzPickle):
 
         calculate_mask = [self.gait]
 
-        mask_width = 0.1
+        mask_width = 1.0
 
         if self.gait == 0: # < 0.10, supporting leg is behind
 
