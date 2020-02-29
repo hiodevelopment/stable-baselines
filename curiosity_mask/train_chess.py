@@ -25,6 +25,7 @@ def callback(_locals, _globals):
     n_steps += 1
     return True
 
+
 model = PPO(MlpPolicy, env, verbose=1, tensorboard_log="run/")
 model.learn(250000)
 

@@ -90,7 +90,11 @@ class MultiDiscreteActionMaskEnv(gym.Env):
             raise Exception("Invalid action was selected! Valid actions: {}, "
                             "action taken: {}".format(self.valid_actions, actions))
         else:
-            valid_actions2[actions[0]][actions[1]] = 0
+            valid_actions2[0][actions[1]] = 0
+            valid_actions2[1][actions[1]] = 0
+            valid_actions2[2][actions[1]] = 0
+            valid_actions2[3][actions[1]] = 0
+            valid_actions2[4][actions[1]] = 0
 
         self.valid_actions = [valid_actions1, valid_actions2]
         self.counter += 1

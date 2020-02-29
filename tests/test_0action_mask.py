@@ -192,10 +192,10 @@ def test_action_mask_run_ppo1(vec_env, policy, env_class):
 @pytest.mark.parametrize('policy', [MlpPolicy])
 @pytest.mark.parametrize('env_class', [MultiDiscreteActionMaskEnv])
 def test_action_mask_learn_ppo2(vec_env, policy, env_class):
-    env = vec_env([env_class] * 2)
+    env = vec_env([env_class] * 4)
 
     model = PPO2(policy, env, verbose=0, nminibatches=2)
-    model.learn(total_timesteps=1000)
+    model.learn(total_timesteps=32000)
     env.close()
 
 

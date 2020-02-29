@@ -123,7 +123,10 @@ class BasePolicy(ABC):
                 self._action_ph = tf.placeholder(dtype=ac_space.dtype, shape=(n_batch,) + ac_space.shape,
                                                  name="action_ph")
 
-            self._action_mask_ph = tf.placeholder(dtype=tf.float32, shape=(None, ac_space.n), name="action_mask_ph")
+            self._action_mask_ph1 = tf.placeholder(dtype=tf.float32, shape=(None, ac_space.nvec[0]),
+                                                   name="action_mask_ph_1")
+            self._action_mask_ph2 = tf.placeholder(dtype=tf.float32, shape=(None, ac_space.nvec[0], ac_space.nvec[1]),
+                                                   name="action_mask_ph_2")
 
         self.sess = sess
         self.reuse = reuse
@@ -163,9 +166,14 @@ class BasePolicy(ABC):
         return self._action_ph
 
     @property
-    def action_mask_ph(self):
+    def action_mask_ph1(self):
         """tf.Tensor: placeholder for valid actions, shape (self.n_env, self.ac_space.n)"""
-        return self._action_mask_ph
+        return self._action_mask_ph1
+
+    @property
+    def action_mask_ph2(self):
+        """tf.Tensor: placeholder for valid actions, shape (self.n_env, self.ac_space.n)"""
+        return self._action_mask_ph2
 
     @staticmethod
     def _kwargs_check(feature_extraction, kwargs):
@@ -224,8 +232,12 @@ class BasePolicy(ABC):
         action_mask[action_mask == 1] = 0
         return action_mask
 
-    def create_action_mask(self):
-        return np.zeros(shape=(1, self.ac_space.n))
+    @staticmethod
+    def create_action_mask(i):
+        if i == 1:
+            return np.zeros(shape=(1, 5))
+        elif i == 2:
+            return np.zeros(shape=(1, 5, 5))
 
 
 class ActorCriticPolicy(BasePolicy):
@@ -258,8 +270,8 @@ class ActorCriticPolicy(BasePolicy):
             assert self.policy is not None and self.proba_distribution is not None and self.value_fn is not None
             if isinstance(self.proba_distribution, CategoricalProbabilityDistribution) or \
                     isinstance(self.proba_distribution, MultiCategoricalProbabilityDistribution):
-                pass
-                # self._action_mask_ph = self.proba_distribution.action_mask_ph
+                self.proba_distribution.categoricals[0].set_action_mask = self._action_mask_ph1
+                self.proba_distribution.categoricals[1].set_action_mask = self._action_mask_ph2
             self._action = self.proba_distribution.sample()
             self._deterministic_action = self.proba_distribution.mode()
             self._neglogp = self.proba_distribution.neglogp(self.action)
@@ -404,9 +416,6 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         """
         raise NotImplementedError
 
-    def create_action_mask(self):
-        return np.zeros(shape=(self.n_env, self.ac_space.n))
-
 
 
 class LstmPolicy(RecurrentActorCriticPolicy):
@@ -465,7 +474,7 @@ class LstmPolicy(RecurrentActorCriticPolicy):
                 value_fn = linear(rnn_output, 'vf', 1)
 
                 self._proba_distribution, self._policy, self.q_value = \
-                    self.pdtype.proba_distribution_from_latent(rnn_output, rnn_output, self.action_mask_ph)
+                    self.pdtype.proba_distribution_from_latent(rnn_output, rnn_output, self.action_mask_ph1, self.action_mask_ph2)
 
             self._value_fn = value_fn
         else:  # Use the new net_arch parameter
@@ -532,15 +541,17 @@ class LstmPolicy(RecurrentActorCriticPolicy):
                 self._value_fn = linear(latent_value, 'vf', 1)
                 # TODO: why not init_scale = 0.001 here like in the feedforward
                 self._proba_distribution, self._policy, self.q_value = \
-                    self.pdtype.proba_distribution_from_latent(latent_policy, latent_value, self.action_mask_ph)
+                    self.pdtype.proba_distribution_from_latent(latent_policy, latent_value, self.action_mask_ph1, self.action_mask_ph2)
         self._setup_init()
 
     def step(self, obs, state=None, mask=None, deterministic=False, action_mask=None):
         feed_dict = {self.obs_ph: obs, self.states_ph: state, self.dones_ph: mask}
         if action_mask is not None and len(action_mask) != 0:
-            feed_dict[self.action_mask_ph] = self.prepare_action_mask(action_mask)
+            feed_dict[self.action_mask_ph1] = self.prepare_action_mask(action_mask[0])
+            feed_dict[self.action_mask_ph2] = self.prepare_action_mask(action_mask[1])
         else:
-            feed_dict[self.action_mask_ph] = self.create_action_mask()
+            feed_dict[self.action_mask_ph1] = self.create_action_mask(1)
+            feed_dict[self.action_mask_ph2] = self.create_action_mask(2)
 
         if deterministic:
             return self.sess.run([self.deterministic_action, self.value_flat, self.snew, self.neglogp],
@@ -552,9 +563,11 @@ class LstmPolicy(RecurrentActorCriticPolicy):
     def proba_step(self, obs, state=None, mask=None, action_mask=None):
         feed_dict = {self.obs_ph: obs, self.states_ph: state, self.dones_ph: mask}
         if action_mask is not None and len(action_mask) != 0:
-            feed_dict[self.proba_distribution.action_mask_ph] = self.prepare_action_mask(action_mask)
+            feed_dict[self.action_mask_ph1] = self.prepare_action_mask(action_mask[0])
+            feed_dict[self.action_mask_ph2] = self.prepare_action_mask(action_mask[1])
         else:
-            feed_dict[self.proba_distribution.action_mask_ph] = self.create_action_mask()
+            feed_dict[self.action_mask_ph1] = self.create_action_mask(1)
+            feed_dict[self.action_mask_ph2] = self.create_action_mask(2)
         return self.sess.run(self.policy_proba, feed_dict)
 
     def value(self, obs, state=None, mask=None):
@@ -610,17 +623,19 @@ class FeedForwardPolicy(ActorCriticPolicy):
             self._value_fn = linear(vf_latent, 'vf', 1)
 
             self._proba_distribution, self._policy, self.q_value = \
-                self.pdtype.proba_distribution_from_latent(pi_latent, vf_latent, self.action_mask_ph, init_scale=0.01)
+                self.pdtype.proba_distribution_from_latent(pi_latent, vf_latent, self.action_mask_ph1, self.action_mask_ph2, init_scale=0.01)
 
         self._setup_init()
 
-    def step(self, obs, state=None, mask=None, deterministic=False, action_mask=None):
+    def step(self, obs, state=None, mask=None, deterministic=False, action_mask1=None, action_mask2=None):
         feed_dict = {self.obs_ph: obs}
 
-        if action_mask is not None and len(action_mask) != 0:
-            feed_dict[self.action_mask_ph] = self.prepare_action_mask(action_mask)
+        if action_mask1 is not None and len(action_mask1) != 0:
+            feed_dict[self.action_mask_ph1] = self.prepare_action_mask(action_mask1)
+            feed_dict[self.action_mask_ph2] = self.prepare_action_mask(action_mask2)
         else:
-            feed_dict[self.action_mask_ph] = self.create_action_mask()
+            feed_dict[self.action_mask_ph1] = self.create_action_mask(1)
+            feed_dict[self.action_mask_ph2] = self.create_action_mask(2)
         if deterministic:
             action, value, neglogp = self.sess.run([self.deterministic_action, self.value_flat, self.neglogp],
                                                    feed_dict)
@@ -632,9 +647,11 @@ class FeedForwardPolicy(ActorCriticPolicy):
     def proba_step(self, obs, state=None, mask=None, action_mask=None):
         feed_dict = {self.obs_ph: obs}
         if action_mask is not None and len(action_mask) != 0:
-            feed_dict[self.action_mask_ph] = self.prepare_action_mask(action_mask)
+            feed_dict[self.action_mask_ph1] = self.prepare_action_mask(action_mask[0])
+            feed_dict[self.action_mask_ph2] = self.prepare_action_mask(action_mask[1])
         else:
-            feed_dict[self.action_mask_ph] = self.create_action_mask()
+            feed_dict[self.action_mask_ph1] = self.create_action_mask(1)
+            feed_dict[self.action_mask_ph2] = self.create_action_mask(2)
         return self.sess.run(self.policy_proba, feed_dict)
 
     def value(self, obs, state=None, mask=None):
