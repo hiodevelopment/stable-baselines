@@ -47,34 +47,52 @@ class MultiDiscreteActionMaskEnv(gym.Env):
     metadata = {'render.modes': ['human', 'system', 'none']}
 
     def __init__(self):
-        self.action_space = MultiDiscrete([3, 3, 3])
+        self.action_space = MultiDiscrete([5, 5])
 
         self.observation_shape = (1, 10, 10)
         self.observation_space = gym.spaces.Box(low=0, high=1, shape=self.observation_shape, dtype=np.float16)
 
         self.counter = 0
-        self.valid_actions = [[1, 1, 1],
-                              [1, 1, 1],
-                              [1, 1, 1]]
+        self.valid_actions1 = [1, 1, 1, 1, 1]
+        self.valid_actions2 = [[1, 1, 1, 1, 1],
+                               [1, 1, 1, 1, 1],
+                               [1, 1, 1, 1, 1],
+                               [1, 1, 1, 1, 1],
+                               [1, 1, 1, 1, 1]]
+        self.valid_actions = [self.valid_actions1, self.valid_actions2]
 
     def reset(self):
         self.counter = 0
-        self.valid_actions = [[1, 1, 1],
-                              [1, 1, 1],
-                              [1, 1, 1]]
+        self.valid_actions1 = [1, 1, 1, 1, 1]
+        self.valid_actions2 = [[1, 1, 1, 1, 1],
+                               [1, 1, 1, 1, 1],
+                               [1, 1, 1, 1, 1],
+                               [1, 1, 1, 1, 1],
+                               [1, 1, 1, 1, 1]]
+        self.valid_actions = [self.valid_actions1, self.valid_actions2]
         return self.state()
 
     def step(self, actions):
-        valid_actions = [[1, 1, 1],
-                         [1, 1, 1],
-                         [1, 1, 1]]
-        for i, action in enumerate(actions):
-            if self.valid_actions[i][action] == 0:
-                raise Exception("Invalid action was selected! Valid actions: {}, "
-                                "action taken: {}".format(self.valid_actions, actions))
-            valid_actions[i][action] = 0
+        print(actions)
+        valid_actions1 = [1, 1, 1, 1, 1]
+        valid_actions2 = [[1, 1, 1, 1, 1],
+                          [1, 1, 1, 1, 1],
+                          [1, 1, 1, 1, 1],
+                          [1, 1, 1, 1, 1],
+                          [1, 1, 1, 1, 1]]
 
-        self.valid_actions = valid_actions
+        if self.valid_actions[0][actions[0]] == 0:
+            raise Exception("Invalid action was selected! Valid actions: {}, "
+                            "action taken: {}".format(self.valid_actions, actions))
+        else:
+            valid_actions1[actions[0]] = 0
+        if self.valid_actions[1][actions[0]][actions[1]] == 0:
+            raise Exception("Invalid action was selected! Valid actions: {}, "
+                            "action taken: {}".format(self.valid_actions, actions))
+        else:
+            valid_actions2[actions[0]][actions[1]] = 0
+
+        self.valid_actions = [valid_actions1, valid_actions2]
         self.counter += 1
 
         return self.state(), 0, self.finish(), {'action_mask': self.valid_actions}

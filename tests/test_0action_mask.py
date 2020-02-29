@@ -188,10 +188,9 @@ def test_action_mask_run_ppo1(vec_env, policy, env_class):
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize('vec_env', [SubprocVecEnv, DummyVecEnv])
+@pytest.mark.parametrize('vec_env', [DummyVecEnv])
 @pytest.mark.parametrize('policy', [MlpPolicy])
-@pytest.mark.parametrize('env_class', [DiscreteActionMaskEnv, MultiDiscreteActionMaskEnv,
-                                       MultiDiscreteUnbalancedActionMaskEnv])
+@pytest.mark.parametrize('env_class', [MultiDiscreteActionMaskEnv])
 def test_action_mask_learn_ppo2(vec_env, policy, env_class):
     env = vec_env([env_class] * 2)
 
