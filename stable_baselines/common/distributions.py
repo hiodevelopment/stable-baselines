@@ -287,13 +287,38 @@ class CategoricalProbabilityDistribution(ProbabilityDistribution):
         :param logits: ([float]) the categorical logits input
         """
         self.logits = logits
+        self._action_mask_ph = None
+        self.action_mask_indices = None
         super(CategoricalProbabilityDistribution, self).__init__()
+
+    def set_action_mask_ph(self, action_mask_ph):
+        if isinstance(action_mask_ph, list):
+            self._action_mask_ph = action_mask_ph[0]
+        else:
+            self._action_mask_ph = action_mask_ph
+
+    def set_action_mask_indices(self, indices):
+        if len(indices) != 0:
+            self.action_mask_indices = indices
+
+    @property
+    def action_mask_ph(self):
+        return self._action_mask_ph
 
     def flatparam(self):
         return self.logits
 
     def mode(self):
-        return tf.argmax(self.logits, axis=-1)
+        # mask: 0 is valid action, -inf is invalid action
+        # [1, 2, 3] add [0, -inf, 0] = [1, -inf, 3]
+        if self.action_mask_indices:
+            sliced_action_mask = self.action_mask_ph
+            for i, index in enumerate(self.action_mask_indices):
+                sliced_action_mask = sliced_action_mask[:, index()[0]]
+            logits = tf.add(self.logits, sliced_action_mask)
+        else:
+            logits = tf.add(self.logits, self.action_mask_ph)
+        return tf.argmax(logits, axis=-1)
 
     def neglogp(self, x):
         # Note: we can't use sparse_softmax_cross_entropy_with_logits because
@@ -321,10 +346,18 @@ class CategoricalProbabilityDistribution(ProbabilityDistribution):
         return tf.reduce_sum(p_0 * (tf.log(z_0) - a_0), axis=-1)
 
     def sample(self):
+        if self.action_mask_indices:
+            sliced_action_mask = self.action_mask_ph
+            for i, index in enumerate(self.action_mask_indices):
+                sliced_action_mask = sliced_action_mask[:, index()[0]]
+            logits = tf.add(self.logits, sliced_action_mask)
+        else:
+            logits = tf.add(self.logits, self.action_mask_ph)
+
         # Gumbel-max trick to sample
         # a categorical distribution (see http://amid.fish/humble-gumbel)
         uniform = tf.random_uniform(tf.shape(self.logits), dtype=self.logits.dtype)
-        return tf.argmax(self.logits - tf.log(-tf.log(uniform)), axis=-1)
+        return tf.argmax(logits - tf.log(-tf.log(uniform)), axis=-1)
 
     @classmethod
     def fromflat(cls, flat):
@@ -348,6 +381,14 @@ class MultiCategoricalProbabilityDistribution(ProbabilityDistribution):
         self.flat = flat
         self.categoricals = list(map(CategoricalProbabilityDistribution, tf.split(flat, nvec, axis=-1)))
         super(MultiCategoricalProbabilityDistribution, self).__init__()
+
+    def set_action_mask_ph(self, action_mask_ph):
+        for i, categorical in enumerate(self.categoricals):
+            categorical.set_action_mask_ph(action_mask_ph[i])
+            action_samples = []
+            for j in range(0, i):
+                action_samples.append(self.categoricals[j].sample)
+            categorical.set_action_mask_indices(action_samples)
 
     def flatparam(self):
         return self.flat

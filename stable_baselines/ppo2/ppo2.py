@@ -449,6 +449,7 @@ class Runner(AbstractEnvRunner):
         super().__init__(env=env, model=model, n_steps=n_steps)
         self.lam = lam
         self.gamma = gamma
+        self.action_mask = []
 
     def _run(self):
         """
@@ -469,7 +470,8 @@ class Runner(AbstractEnvRunner):
         mb_states = self.states
         ep_infos = []
         for _ in range(self.n_steps):
-            actions, values, self.states, neglogpacs = self.model.step(self.obs, self.states, self.dones)
+            actions, values, self.states, neglogpacs = self.model.step(self.obs, self.states, self.dones,
+                                                                       action_mask=self.action_mask)
             mb_obs.append(self.obs.copy())
             mb_actions.append(actions)
             mb_values.append(values)
@@ -490,10 +492,16 @@ class Runner(AbstractEnvRunner):
                     # Return dummy values
                     return [None] * 9
 
+            self.action_mask.clear()
             for info in infos:
                 maybe_ep_info = info.get('episode')
                 if maybe_ep_info is not None:
                     ep_infos.append(maybe_ep_info)
+
+                # action mask
+                env_action_mask = info.get('action_mask')
+                self.action_mask.append(env_action_mask)
+
             mb_rewards.append(rewards)
         # batch of steps to batch of rollouts
         mb_obs = np.asarray(mb_obs, dtype=self.obs.dtype)
