@@ -191,16 +191,6 @@ class BasePolicy(ABC):
         """tf.Tensor: placeholder for actions, shape (self.n_batch, ) + self.ac_space.shape."""
         return self._action_ph
 
-    @property
-    def action_mask_ph1(self):
-        """tf.Tensor: placeholder for valid actions, shape (self.n_env, self.ac_space.n)"""
-        return self._action_mask_ph1
-
-    @property
-    def action_mask_ph2(self):
-        """tf.Tensor: placeholder for valid actions, shape (self.n_env, self.ac_space.n)"""
-        return self._action_mask_ph2
-
     @staticmethod
     def _kwargs_check(feature_extraction, kwargs):
         """
