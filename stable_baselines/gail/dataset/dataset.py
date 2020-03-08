@@ -2,7 +2,7 @@ import queue
 import time
 from multiprocessing import Queue, Process
 
-import cv2
+import cv2  # pytype:disable=import-error
 import numpy as np
 from joblib import Parallel, delayed
 
@@ -181,7 +181,7 @@ class DataLoader(object):
     :param actions: (np.ndarray) actions
     :param batch_size: (int) Number of samples per minibatch
     :param n_workers: (int) number of preprocessing worker (for loading the images)
-    :param infinite_loop: (bool) whether to have an iterator that can be resetted
+    :param infinite_loop: (bool) whether to have an iterator that can be reset
     :param max_queue_len: (int) Max number of minibatches that can be preprocessed at the same time
     :param shuffle: (bool) Shuffle the minibatch after each epoch
     :param start_process: (bool) Start the preprocessing process (default: True)
@@ -204,7 +204,7 @@ class DataLoader(object):
         self.n_minibatches = len(indices) // batch_size
         # Add a partial minibatch, for instance
         # when there is not enough samples
-        if partial_minibatch and len(indices) / batch_size > 0:
+        if partial_minibatch and len(indices) % batch_size > 0:
             self.n_minibatches += 1
         self.batch_size = batch_size
         self.observations = observations

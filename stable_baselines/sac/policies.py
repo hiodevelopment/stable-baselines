@@ -3,6 +3,7 @@ import numpy as np
 from gym.spaces import Box
 
 from stable_baselines.common.policies import BasePolicy, nature_cnn, register_policy
+from stable_baselines.common.tf_layers import mlp
 
 EPS = 1e-6  # Avoid NaN (prevents division by zero or log of zero)
 # CAP the standard deviation of the actor
@@ -26,31 +27,12 @@ def gaussian_likelihood(input_, mu_, log_std):
 
 def gaussian_entropy(log_std):
     """
-    Compute the entropy for a diagonal gaussian distribution.
+    Compute the entropy for a diagonal Gaussian distribution.
 
     :param log_std: (tf.Tensor) Log of the standard deviation
     :return: (tf.Tensor)
     """
     return tf.reduce_sum(log_std + 0.5 * np.log(2.0 * np.pi * np.e), axis=-1)
-
-
-def mlp(input_ph, layers, activ_fn=tf.nn.relu, layer_norm=False):
-    """
-    Create a multi-layer fully connected neural network.
-
-    :param input_ph: (tf.placeholder)
-    :param layers: ([int]) Network architecture
-    :param activ_fn: (tf.function) Activation function
-    :param layer_norm: (bool) Whether to apply layer normalization or not
-    :return: (tf.Tensor)
-    """
-    output = input_ph
-    for i, layer_size in enumerate(layers):
-        output = tf.layers.dense(output, layer_size, name='fc' + str(i))
-        if layer_norm:
-            output = tf.contrib.layers.layer_norm(output, center=True, scale=True)
-        output = activ_fn(output)
-    return output
 
 
 def clip_but_pass_gradient(input_, lower=-1., upper=1.):
@@ -61,7 +43,7 @@ def clip_but_pass_gradient(input_, lower=-1., upper=1.):
 
 def apply_squashing_func(mu_, pi_, logp_pi):
     """
-    Squash the ouput of the gaussian distribution
+    Squash the output of the Gaussian distribution
     and account for that in the log probability
     The squashed mean is also returned for using
     deterministic actions.
@@ -99,7 +81,6 @@ class SACPolicy(BasePolicy):
     def __init__(self, sess, ob_space, ac_space, n_env=1, n_steps=1, n_batch=None, reuse=False, scale=False):
         super(SACPolicy, self).__init__(sess, ob_space, ac_space, n_env, n_steps, n_batch, reuse=reuse, scale=scale)
         assert isinstance(ac_space, Box), "Error: the action space must be of type gym.spaces.Box"
-        assert (np.abs(ac_space.low) == ac_space.high).all(), "Error: the action space low and high must be symmetric"
 
         self.qf1 = None
         self.qf2 = None
@@ -114,7 +95,7 @@ class SACPolicy(BasePolicy):
         Creates an actor object
 
         :param obs: (TensorFlow Tensor) The observation placeholder (can be None for default placeholder)
-        :param reuse: (bool) whether or not to resue parameters
+        :param reuse: (bool) whether or not to reuse parameters
         :param scope: (str) the scope name of the actor
         :return: (TensorFlow Tensor) the output tensor
         """
@@ -127,7 +108,7 @@ class SACPolicy(BasePolicy):
 
         :param obs: (TensorFlow Tensor) The observation placeholder (can be None for default placeholder)
         :param action: (TensorFlow Tensor) The action placeholder
-        :param reuse: (bool) whether or not to resue parameters
+        :param reuse: (bool) whether or not to reuse parameters
         :param scope: (str) the scope name
         :param create_vf: (bool) Whether to create Value fn or not
         :param create_qf: (bool) Whether to create Q-Values fn or not
@@ -236,7 +217,7 @@ class FeedForwardPolicy(SACPolicy):
         logp_pi = gaussian_likelihood(pi_, mu_, log_std)
         self.entropy = gaussian_entropy(log_std)
         # MISSING: reg params for log and mu
-        # Apply squashing and account for it in the probabilty
+        # Apply squashing and account for it in the probability
         deterministic_policy, policy, logp_pi = apply_squashing_func(mu_, pi_, logp_pi)
         self.policy = policy
         self.deterministic_policy = deterministic_policy

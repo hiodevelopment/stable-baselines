@@ -80,7 +80,7 @@ The idea is that this callable can be a PID controller, asking a human player, .
 		    return env.action_space.sample()
 		# Data will be saved in a numpy archive named `expert_cartpole.npz`
 		# when using something different than an RL expert,
-		# you must pass the environment object explicitely
+		# you must pass the environment object explicitly
 		generate_expert_traj(dummy_expert, 'dummy_expert_cartpole', env, n_episodes=10)
 
 
@@ -127,8 +127,7 @@ Using the ``expert_cartpole.npz`` dataset generated with the previous script.
 Data Structure of the Expert Dataset
 ------------------------------------
 
-The expert dataset is a ``.npz`` archive. The data is saved in python dictionary format with keys: ``actions``, ``episode_returns``, ``rewards``, ``obs``,
-``episode_starts``.
+The expert dataset is a ``.npz`` archive. The data is saved in python dictionary format with keys: ``actions``, ``episode_returns``, ``rewards``, ``obs``, ``episode_starts``.
 
 In case of images, ``obs`` contains the relative path to the images.
 

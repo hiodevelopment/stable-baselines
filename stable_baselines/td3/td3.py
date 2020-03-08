@@ -1,19 +1,17 @@
 import sys
 import time
-from collections import deque
 import warnings
 
 import numpy as np
 import tensorflow as tf
 
-from stable_baselines.a2c.utils import total_episode_reward_logger
+from stable_baselines import logger
 from stable_baselines.common import tf_util, OffPolicyRLModel, SetVerbosity, TensorboardWriter
 from stable_baselines.common.vec_env import VecEnv
-from stable_baselines.deepq.replay_buffer import ReplayBuffer
-from stable_baselines.ppo2.ppo2 import safe_mean, get_schedule_fn
-from stable_baselines.sac.sac import get_vars
+from stable_baselines.common.math_util import safe_mean, unscale_action, scale_action
+from stable_baselines.common.schedules import get_schedule_fn
+from stable_baselines.common.buffers import ReplayBuffer
 from stable_baselines.td3.policies import TD3Policy
-from stable_baselines import logger
 
 
 class TD3(OffPolicyRLModel):
@@ -37,7 +35,7 @@ class TD3(OffPolicyRLModel):
     :param policy_delay: (int) Policy and target networks will only be updated once every policy_delay steps
         per training steps. The Q values will be updated policy_delay more often (update every training step).
     :param action_noise: (ActionNoise) the action noise type. Cf DDPG for the different action noise type.
-    :param target_policy_noise: (float) Standard deviation of gaussian noise added to target policy
+    :param target_policy_noise: (float) Standard deviation of Gaussian noise added to target policy
         (smoothing noise)
     :param target_noise_clip: (float) Limit for absolute value of target policy smoothing noise.
     :param train_freq: (int) Update the model every `train_freq` steps.
@@ -86,7 +84,6 @@ class TD3(OffPolicyRLModel):
 
         self.graph = None
         self.replay_buffer = None
-        self.episode_reward = None
         self.sess = None
         self.tensorboard_log = tensorboard_log
         self.verbose = verbose
@@ -120,7 +117,7 @@ class TD3(OffPolicyRLModel):
     def _get_pretrain_placeholders(self):
         policy = self.policy_tf
         # Rescale
-        policy_out = self.policy_out * np.abs(self.action_space.low)
+        policy_out = unscale_action(self.action_space, self.policy_out)
         return policy.obs_ph, self.actions_ph, policy_out
 
     def setup_model(self):
@@ -196,16 +193,16 @@ class TD3(OffPolicyRLModel):
                     # will be called only every n training steps,
                     # where n is the policy delay
                     policy_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate_ph)
-                    policy_train_op = policy_optimizer.minimize(policy_loss, var_list=get_vars('model/pi'))
+                    policy_train_op = policy_optimizer.minimize(policy_loss, var_list=tf_util.get_trainable_vars('model/pi'))
                     self.policy_train_op = policy_train_op
 
                     # Q Values optimizer
                     qvalues_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate_ph)
-                    qvalues_params = get_vars('model/values_fn/')
+                    qvalues_params = tf_util.get_trainable_vars('model/values_fn/')
 
                     # Q Values and policy target params
-                    source_params = get_vars("model/")
-                    target_params = get_vars("target/")
+                    source_params = tf_util.get_trainable_vars("model/")
+                    target_params = tf_util.get_trainable_vars("target/")
 
                     # Polyak averaging for target variables
                     self.target_ops = [
@@ -233,8 +230,8 @@ class TD3(OffPolicyRLModel):
                     tf.summary.scalar('learning_rate', tf.reduce_mean(self.learning_rate_ph))
 
                 # Retrieve parameters that must be saved
-                self.params = get_vars("model")
-                self.target_params = get_vars("target/")
+                self.params = tf_util.get_trainable_vars("model")
+                self.target_params = tf_util.get_trainable_vars("target/")
 
                 # Initialize Variables and target network
                 with self.sess.as_default():
@@ -280,6 +277,7 @@ class TD3(OffPolicyRLModel):
               log_interval=4, tb_log_name="TD3", reset_num_timesteps=True, replay_wrapper=None):
 
         new_tb_log = self._init_num_timesteps(reset_num_timesteps)
+        callback = self._init_callback(callback)
 
         if replay_wrapper is not None:
             self.replay_buffer = replay_wrapper(self.replay_buffer)
@@ -300,26 +298,22 @@ class TD3(OffPolicyRLModel):
             if self.action_noise is not None:
                 self.action_noise.reset()
             obs = self.env.reset()
-            self.episode_reward = np.zeros((1,))
-            ep_info_buf = deque(maxlen=100)
             n_updates = 0
             infos_values = []
 
-            for step in range(total_timesteps):
-                if callback is not None:
-                    # Only stop training if return value is False, not when it is None. This is for backwards
-                    # compatibility with callbacks that have no return statement.
-                    if callback(locals(), globals()) is False:
-                        break
+            callback.on_training_start(locals(), globals())
+            callback.on_rollout_start()
 
+            for step in range(total_timesteps):
                 # Before training starts, randomly sample actions
                 # from a uniform distribution for better exploration.
                 # Afterwards, use the learned policy
                 # if random_exploration is set to 0 (normal setting)
-                if (self.num_timesteps < self.learning_starts
-                        or np.random.rand() < self.random_exploration):
-                    # No need to rescale when sampling random action
-                    rescaled_action = action = self.env.action_space.sample()
+                if self.num_timesteps < self.learning_starts or np.random.rand() < self.random_exploration:
+                    # actions sampled from action space are from range specific to the environment
+                    # but algorithm operates on tanh-squashed actions therefore simple scaling is used
+                    unscaled_action = self.env.action_space.sample()
+                    action = scale_action(self.action_space, unscaled_action)
                 else:
                     action = self.policy_tf.step(obs[None]).flatten()
                     # Add noise to the action, as the policy
@@ -327,11 +321,18 @@ class TD3(OffPolicyRLModel):
                     if self.action_noise is not None:
                         action = np.clip(action + self.action_noise(), -1, 1)
                     # Rescale from [-1, 1] to the correct bounds
-                    rescaled_action = action * np.abs(self.action_space.low)
+                    unscaled_action = unscale_action(self.action_space, action)
 
                 assert action.shape == self.env.action_space.shape
 
-                new_obs, reward, done, info = self.env.step(rescaled_action)
+                new_obs, reward, done, info = self.env.step(unscaled_action)
+
+                self.num_timesteps += 1
+
+                # Only stop training if return value is False, not when it is None. This is for backwards
+                # compatibility with callbacks that have no return statement.
+                if callback.on_step() is False:
+                    break
 
                 # Store transition in the replay buffer.
                 self.replay_buffer.add(obs, action, reward, new_obs, float(done))
@@ -340,16 +341,18 @@ class TD3(OffPolicyRLModel):
                 # Retrieve reward and episode length if using Monitor wrapper
                 maybe_ep_info = info.get('episode')
                 if maybe_ep_info is not None:
-                    ep_info_buf.extend([maybe_ep_info])
+                    self.ep_info_buf.extend([maybe_ep_info])
 
                 if writer is not None:
                     # Write reward per episode to tensorboard
                     ep_reward = np.array([reward]).reshape((1, -1))
                     ep_done = np.array([done]).reshape((1, -1))
-                    self.episode_reward = total_episode_reward_logger(self.episode_reward, ep_reward,
-                                                                      ep_done, writer, self.num_timesteps)
+                    tf_util.total_episode_reward_logger(self.episode_reward, ep_reward,
+                                                        ep_done, writer, self.num_timesteps)
 
                 if step % self.train_freq == 0:
+                    callback.on_rollout_end()
+
                     mb_infos_vals = []
                     # Update policy, critics and target networks
                     for grad_step in range(self.gradient_steps):
@@ -372,6 +375,9 @@ class TD3(OffPolicyRLModel):
                     if len(mb_infos_vals) > 0:
                         infos_values = np.mean(mb_infos_vals, axis=0)
 
+                    callback.on_rollout_start()
+
+
                 episode_rewards[-1] += reward
                 if done:
                     if self.action_noise is not None:
@@ -390,15 +396,14 @@ class TD3(OffPolicyRLModel):
                     mean_reward = round(float(np.mean(episode_rewards[-101:-1])), 1)
 
                 num_episodes = len(episode_rewards)
-                self.num_timesteps += 1
                 # Display training infos
                 if self.verbose >= 1 and done and log_interval is not None and len(episode_rewards) % log_interval == 0:
                     fps = int(step / (time.time() - start_time))
                     logger.logkv("episodes", num_episodes)
                     logger.logkv("mean 100 episode reward", mean_reward)
-                    if len(ep_info_buf) > 0 and len(ep_info_buf[0]) > 0:
-                        logger.logkv('ep_rewmean', safe_mean([ep_info['r'] for ep_info in ep_info_buf]))
-                        logger.logkv('eplenmean', safe_mean([ep_info['l'] for ep_info in ep_info_buf]))
+                    if len(self.ep_info_buf) > 0 and len(self.ep_info_buf[0]) > 0:
+                        logger.logkv('ep_rewmean', safe_mean([ep_info['r'] for ep_info in self.ep_info_buf]))
+                        logger.logkv('eplenmean', safe_mean([ep_info['l'] for ep_info in self.ep_info_buf]))
                     logger.logkv("n_updates", n_updates)
                     logger.logkv("current_lr", current_lr)
                     logger.logkv("fps", fps)
@@ -412,6 +417,8 @@ class TD3(OffPolicyRLModel):
                     logger.dumpkvs()
                     # Reset infos:
                     infos_values = []
+
+            callback.on_training_end()
             return self
 
     def action_probability(self, observation, state=None, mask=None, actions=None, logp=False, action_mask=None):
@@ -435,7 +442,7 @@ class TD3(OffPolicyRLModel):
             actions = np.clip(actions + self.action_noise(), -1, 1)
 
         actions = actions.reshape((-1,) + self.action_space.shape)  # reshape to the correct action shape
-        actions = actions * np.abs(self.action_space.low)  # scale the output for the prediction
+        actions = unscale_action(self.action_space, actions)  # scale the output for the prediction
 
         if not vectorized_env:
             actions = actions[0]

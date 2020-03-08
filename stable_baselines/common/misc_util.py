@@ -51,20 +51,17 @@ def mpi_rank_or_zero():
     :return: (int)
     """
     try:
-        from mpi4py import MPI
-        return MPI.COMM_WORLD.Get_rank()
+        import mpi4py
+        return mpi4py.MPI.COMM_WORLD.Get_rank()
     except ImportError:
         return 0
 
 
-def flatten_mask(action_space, env_action_mask):
+def flatten_lists(listoflists):
     """
-    Return action mask after flattening.
-    :return: (list or None)
-    """
-    if isinstance(action_space, gym.spaces.MultiDiscrete):
-        return np.concatenate(env_action_mask)
-    elif isinstance(action_space, gym.spaces.Discrete):
-        return env_action_mask
+    Flatten a python list of list
 
-    return None
+    :param listoflists: (list(list))
+    :return: (list)
+    """
+    return [el for list_ in listoflists for el in list_]

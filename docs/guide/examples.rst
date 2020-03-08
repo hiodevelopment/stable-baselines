@@ -1,3 +1,5 @@
+.. _examples:
+
 Examples
 ========
 
@@ -7,6 +9,8 @@ Try it online with Colab Notebooks!
 All the following examples can be executed online using Google colab |colab|
 notebooks:
 
+-  `Full Tutorial <https://github.com/araffin/rl-tutorial-jnrr19>`_
+-  `All Notebooks <https://github.com/Stable-Baselines-Team/rl-colab-notebooks>`_
 -  `Getting Started`_
 -  `Training, Saving, Loading`_
 -  `Multiprocessing`_
@@ -16,14 +20,14 @@ notebooks:
 -  `Hindsight Experience Replay`_
 -  `RL Baselines zoo`_
 
-.. _Getting Started: https://colab.research.google.com/drive/1_1H5bjWKYBVKbbs-Kj83dsfuZieDNcFU
-.. _Training, Saving, Loading: https://colab.research.google.com/drive/16QritJF5kgT3mtnODepld1fo5tFnFCoc
-.. _Multiprocessing: https://colab.research.google.com/drive/1ZzNFMUUi923foaVsYb4YjPy4mjKtnOxb
-.. _Monitor Training and Plotting: https://colab.research.google.com/drive/1L_IMo6v0a0ALK8nefZm6PqPSy0vZIWBT
-.. _Atari Games: https://colab.research.google.com/drive/1iYK11yDzOOqnrXi1Sfjm1iekZr4cxLaN
-.. _Breakout: https://colab.research.google.com/drive/14NwwEHwN4hdNgGzzySjxQhEVDff-zr7O
-.. _Hindsight Experience Replay: https://colab.research.google.com/drive/1VDD0uLi8wjUXIqAdLKiK15XaEe0z2FOc
-.. _RL Baselines zoo: https://colab.research.google.com/drive/1cPGK3XrCqEs3QLqiijsfib9OFht3kObX
+.. _Getting Started: https://colab.research.google.com/github/Stable-Baselines-Team/rl-colab-notebooks/blob/master/stable_baselines_getting_started.ipynb
+.. _Training, Saving, Loading: https://colab.research.google.com/github/Stable-Baselines-Team/rl-colab-notebooks/blob/master/saving_loading_dqn.ipynb
+.. _Multiprocessing: https://colab.research.google.com/github/Stable-Baselines-Team/rl-colab-notebooks/blob/master/multiprocessing_rl.ipynb
+.. _Monitor Training and Plotting: https://colab.research.google.com/github/Stable-Baselines-Team/rl-colab-notebooks/blob/master/monitor_training.ipynb
+.. _Atari Games: https://colab.research.google.com/github/Stable-Baselines-Team/rl-colab-notebooks/blob/master/atari_games.ipynb
+.. _Breakout: https://colab.research.google.com/github/Stable-Baselines-Team/rl-colab-notebooks/blob/master/breakout.ipynb
+.. _Hindsight Experience Replay: https://colab.research.google.com/github/Stable-Baselines-Team/rl-colab-notebooks/blob/master/stable_baselines_her.ipynb
+.. _RL Baselines zoo: https://colab.research.google.com/github/Stable-Baselines-Team/rl-colab-notebooks/blob/master/rl-baselines-zoo.ipynb
 
 .. |colab| image:: ../_static/img/colab.svg
 
@@ -34,7 +38,7 @@ In the following example, we will train, save and load a DQN model on the Lunar 
 
 .. image:: ../_static/img/try_it.png
    :scale: 30 %
-   :target: https://colab.research.google.com/drive/16QritJF5kgT3mtnODepld1fo5tFnFCoc
+   :target: https://colab.research.google.com/github/Stable-Baselines-Team/rl-colab-notebooks/blob/master/saving_loading_dqn.ipynb
 
 
 .. figure:: https://cdn-images-1.medium.com/max/960/1*f4VZPKOI0PYNWiwt0la0Rg.gif
@@ -43,7 +47,7 @@ In the following example, we will train, save and load a DQN model on the Lunar 
 
 
 .. note::
-  LunarLander requires the python package `box2d`.
+  LunarLander requires the python package ``box2d``.
   You can install it using ``apt install swig`` and then ``pip install box2d box2d-kengz``
 
 .. note::
@@ -56,6 +60,8 @@ In the following example, we will train, save and load a DQN model on the Lunar 
   import gym
 
   from stable_baselines import DQN
+  from stable_baselines.common.evaluation import evaluate_policy
+
 
   # Create environment
   env = gym.make('LunarLander-v2')
@@ -71,6 +77,9 @@ In the following example, we will train, save and load a DQN model on the Lunar 
   # Load the trained agent
   model = DQN.load("dqn_lunar")
 
+  # Evaluate the agent
+  mean_reward, std_reward = evaluate_policy(model, model.get_env(), n_eval_episodes=10)
+
   # Enjoy trained agent
   obs = env.reset()
   for i in range(1000):
@@ -84,7 +93,7 @@ Multiprocessing: Unleashing the Power of Vectorized Environments
 
 .. image:: ../_static/img/try_it.png
    :scale: 30 %
-   :target: https://colab.research.google.com/drive/1ZzNFMUUi923foaVsYb4YjPy4mjKtnOxb
+   :target: https://colab.research.google.com/github/Stable-Baselines-Team/rl-colab-notebooks/blob/master/multiprocessing_rl.ipynb
 
 .. figure:: https://cdn-images-1.medium.com/max/960/1*h4WTQNVIsvMXJTCpXm_TAw.gif
 
@@ -98,7 +107,7 @@ Multiprocessing: Unleashing the Power of Vectorized Environments
 
   from stable_baselines.common.policies import MlpPolicy
   from stable_baselines.common.vec_env import SubprocVecEnv
-  from stable_baselines.common import set_global_seeds
+  from stable_baselines.common import set_global_seeds, make_vec_env
   from stable_baselines import ACKTR
 
   def make_env(env_id, rank, seed=0):
@@ -123,6 +132,10 @@ Multiprocessing: Unleashing the Power of Vectorized Environments
       # Create the vectorized environment
       env = SubprocVecEnv([make_env(env_id, i) for i in range(num_cpu)])
 
+      # Stable Baselines provides you with make_vec_env() helper
+      # which does exactly the previous steps for you:
+      # env = make_vec_env(env_id, n_envs=num_cpu, seed=0)
+
       model = ACKTR(MlpPolicy, env, verbose=1)
       model.learn(total_timesteps=25000)
 
@@ -137,6 +150,10 @@ Multiprocessing: Unleashing the Power of Vectorized Environments
 Using Callback: Monitoring Training
 -----------------------------------
 
+.. note::
+
+	We recommend reading the `Callback section <callbacks.html>`_
+
 You can define a custom callback function that will be called inside the agent.
 This could be useful when you want to monitor training, for instance display live
 learning curves in Tensorboard (or in Visdom) or save the best agent.
@@ -144,7 +161,7 @@ If your callback returns False, training is aborted early.
 
 .. image:: ../_static/img/try_it.png
    :scale: 30 %
-   :target: https://colab.research.google.com/drive/1L_IMo6v0a0ALK8nefZm6PqPSy0vZIWBT
+   :target: https://colab.research.google.com/github/Stable-Baselines-Team/rl-colab-notebooks/blob/master/monitor_training.ipynb
 
 .. figure:: ../_static/img/learning_curve.png
 
@@ -158,55 +175,79 @@ If your callback returns False, training is aborted early.
   import numpy as np
   import matplotlib.pyplot as plt
 
+  from stable_baselines import DDPG
   from stable_baselines.ddpg.policies import LnMlpPolicy
+  from stable_baselines import results_plotter
   from stable_baselines.bench import Monitor
   from stable_baselines.results_plotter import load_results, ts2xy
-  from stable_baselines import DDPG
-  from stable_baselines.ddpg import AdaptiveParamNoiseSpec
+  from stable_baselines.common.noise import AdaptiveParamNoiseSpec
+  from stable_baselines.common.callbacks import BaseCallback
 
 
-  best_mean_reward, n_steps = -np.inf, 0
+  class SaveOnBestTrainingRewardCallback(BaseCallback):
+      """
+      Callback for saving a model (the check is done every ``check_freq`` steps)
+      based on the training reward (in practice, we recommend using ``EvalCallback``).
 
-  def callback(_locals, _globals):
-    """
-    Callback called at each step (for DQN an others) or after n steps (see ACER or PPO2)
-    :param _locals: (dict)
-    :param _globals: (dict)
-    """
-    global n_steps, best_mean_reward
-    # Print stats every 1000 calls
-    if (n_steps + 1) % 1000 == 0:
-        # Evaluate policy training performance
-        x, y = ts2xy(load_results(log_dir), 'timesteps')
-        if len(x) > 0:
-            mean_reward = np.mean(y[-100:])
-            print(x[-1], 'timesteps')
-            print("Best mean reward: {:.2f} - Last mean reward per episode: {:.2f}".format(best_mean_reward, mean_reward))
+      :param check_freq: (int)
+      :param log_dir: (str) Path to the folder where the model will be saved.
+        It must contains the file created by the ``Monitor`` wrapper.
+      :param verbose: (int)
+      """
+      def __init__(self, check_freq: int, log_dir: str, verbose=1):
+          super(SaveOnBestTrainingRewardCallback, self).__init__(verbose)
+          self.check_freq = check_freq
+          self.log_dir = log_dir
+          self.save_path = os.path.join(log_dir, 'best_model')
+          self.best_mean_reward = -np.inf
 
-            # New best model, you could save the agent here
-            if mean_reward > best_mean_reward:
-                best_mean_reward = mean_reward
-                # Example for saving best model
-                print("Saving new best model")
-                _locals['self'].save(log_dir + 'best_model.pkl')
-    n_steps += 1
-    return True
+      def _init_callback(self) -> None:
+          # Create folder if needed
+          if self.save_path is not None:
+              os.makedirs(self.save_path, exist_ok=True)
 
+      def _on_step(self) -> bool:
+          if self.n_calls % self.check_freq == 0:
+
+            # Retrieve training reward
+            x, y = ts2xy(load_results(self.log_dir), 'timesteps')
+            if len(x) > 0:
+                # Mean training reward over the last 100 episodes
+                mean_reward = np.mean(y[-100:])
+                if self.verbose > 0:
+                  print("Num timesteps: {}".format(self.num_timesteps))
+                  print("Best mean reward: {:.2f} - Last mean reward per episode: {:.2f}".format(self.best_mean_reward, mean_reward))
+
+                # New best model, you could save the agent here
+                if mean_reward > self.best_mean_reward:
+                    self.best_mean_reward = mean_reward
+                    # Example for saving best model
+                    if self.verbose > 0:
+                      print("Saving new best model to {}".format(self.save_path))
+                    self.model.save(self.save_path)
+
+          return True
 
   # Create log dir
-  log_dir = "/tmp/gym/"
+  log_dir = "tmp/"
   os.makedirs(log_dir, exist_ok=True)
 
   # Create and wrap the environment
   env = gym.make('LunarLanderContinuous-v2')
-  env = Monitor(env, log_dir, allow_early_resets=True)
+  env = Monitor(env, log_dir)
 
   # Add some param noise for exploration
   param_noise = AdaptiveParamNoiseSpec(initial_stddev=0.1, desired_action_stddev=0.1)
   # Because we use parameter noise, we should use a MlpPolicy with layer normalization
   model = DDPG(LnMlpPolicy, env, param_noise=param_noise, verbose=0)
+  # Create the callback: check every 1000 steps
+  callback = SaveOnBestTrainingRewardCallback(check_freq=1000, log_dir=log_dir)
   # Train the agent
-  model.learn(total_timesteps=int(1e5), callback=callback)
+  time_steps = 1e5
+  model.learn(total_timesteps=int(time_steps), callback=callback)
+
+  results_plotter.plot_results([log_dir], time_steps, results_plotter.X_TIMESTEPS, "DDPG LunarLander")
+  plt.show()
 
 
 Atari Games
@@ -227,7 +268,7 @@ and multiprocessing for you.
 
 .. image:: ../_static/img/try_it.png
    :scale: 30 %
-   :target: https://colab.research.google.com/drive/1iYK11yDzOOqnrXi1Sfjm1iekZr4cxLaN
+   :target: https://colab.research.google.com/github/Stable-Baselines-Team/rl-colab-notebooks/blob/master/atari_games.ipynb
 
 
 .. code-block:: python
@@ -282,10 +323,10 @@ will compute a running average and standard deviation of input features (it can 
   model = PPO2(MlpPolicy, env)
   model.learn(total_timesteps=2000)
 
-  # Don't forget to save the running average when saving the agent
+  # Don't forget to save the VecNormalize statistics when saving the agent
   log_dir = "/tmp/"
   model.save(log_dir + "ppo_reacher")
-  env.save_running_average(log_dir)
+  env.save(os.path.join(log_dir, "vec_normalize.pkl"))
 
 
 Custom Policy Network
@@ -336,8 +377,6 @@ A2C policy gradient updates on the model.
   import gym
   import numpy as np
 
-  from stable_baselines.common.policies import MlpPolicy
-  from stable_baselines.common.vec_env import DummyVecEnv
   from stable_baselines import A2C
 
   def mutate(params):
@@ -361,9 +400,8 @@ A2C policy gradient updates on the model.
 
   # Create env
   env = gym.make('CartPole-v1')
-  env = DummyVecEnv([lambda: env])
   # Create policy with a small network
-  model = A2C(MlpPolicy, env, ent_coef=0.0, learning_rate=0.1,
+  model = A2C('MlpPolicy', env, ent_coef=0.0, learning_rate=0.1,
               policy_kwargs={'net_arch': [8, ]})
 
   # Use traditional actor-critic policy gradient updates to
@@ -447,7 +485,7 @@ For this example, we are using `Highway-Env <https://github.com/eleurent/highway
 
 .. image:: ../_static/img/try_it.png
    :scale: 30 %
-   :target: https://colab.research.google.com/drive/1VDD0uLi8wjUXIqAdLKiK15XaEe0z2FOc
+   :target: https://colab.research.google.com/github/Stable-Baselines-Team/rl-colab-notebooks/blob/master/stable_baselines_her.ipynb
 
 
 .. figure:: https://raw.githubusercontent.com/eleurent/highway-env/gh-media/docs/media/parking-env.gif
@@ -458,7 +496,7 @@ The parking env is a goal-conditioned continuous control task, in which the vehi
 
 .. note::
 
-	the hyperparameters in the following example were optimized for that environment.
+  the hyperparameters in the following example were optimized for that environment.
 
 
 .. code-block:: python
@@ -507,14 +545,14 @@ The parking env is a goal-conditioned continuous control task, in which the vehi
   # Evaluate the agent
   episode_reward = 0
   for _ in range(100):
-  	action, _ = model.predict(obs)
-  	obs, reward, done, info = env.step(action)
-  	env.render()
-  	episode_reward += reward
-  	if done or info.get('is_success', False):
-  		print("Reward:", episode_reward, "Success?", info.get('is_success', False))
-  		episode_reward = 0.0
-  		obs = env.reset()
+    action, _ = model.predict(obs)
+    obs, reward, done, info = env.step(action)
+    env.render()
+    episode_reward += reward
+    if done or info.get('is_success', False):
+      print("Reward:", episode_reward, "Success?", info.get('is_success', False))
+      episode_reward = 0.0
+      obs = env.reset()
 
 
 
@@ -542,6 +580,9 @@ You can also move from learning on one environment to another for `continual lea
       obs, rewards, dones, info = env.step(action)
       env.render()
 
+  # Close the processes
+  env.close()
+
   # The number of environments must be identical when changing environments
   env = make_atari_env('SpaceInvadersNoFrameskip-v4', num_env=8, seed=0)
 
@@ -554,6 +595,7 @@ You can also move from learning on one environment to another for `continual lea
       action, _states = model.predict(obs)
       obs, rewards, dones, info = env.step(action)
       env.render()
+  env.close()
 
 
 Record a Video
@@ -587,6 +629,7 @@ Record a mp4 video (here using a random agent).
   for _ in range(video_length + 1):
     action = [env.action_space.sample()]
     obs, _, _, _ = env.step(action)
+  # Save the video
   env.close()
 
 
@@ -602,10 +645,9 @@ Bonus: Make a GIF of a Trained Agent
   import imageio
   import numpy as np
 
-  from stable_baselines.common.policies import MlpPolicy
   from stable_baselines import A2C
 
-  model = A2C(MlpPolicy, "LunarLander-v2").learn(100000)
+  model = A2C("MlpPolicy", "LunarLander-v2").learn(100000)
 
   images = []
   obs = model.env.reset()
@@ -616,4 +658,4 @@ Bonus: Make a GIF of a Trained Agent
       obs, _, _ ,_ = model.env.step(action)
       img = model.env.render(mode='rgb_array')
 
-  imageio.mimsave('lander_a2c.gif', [np.array(img[0]) for i, img in enumerate(images) if i%2 == 0], fps=29)
+  imageio.mimsave('lander_a2c.gif', [np.array(img) for i, img in enumerate(images) if i%2 == 0], fps=29)

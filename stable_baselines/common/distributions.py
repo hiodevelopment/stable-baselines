@@ -3,7 +3,7 @@ import tensorflow as tf
 from tensorflow.python.ops import math_ops
 from gym import spaces
 
-from stable_baselines.a2c.utils import linear
+from stable_baselines.common.tf_layers import linear
 
 class ProbabilityDistribution(object):
     """
@@ -17,7 +17,7 @@ class ProbabilityDistribution(object):
         """
         Return the direct probabilities
 
-        :return: ([float]) the probabilites
+        :return: ([float]) the probabilities
         """
         raise NotImplementedError
 
@@ -41,7 +41,7 @@ class ProbabilityDistribution(object):
 
     def kl(self, other):
         """
-        Calculates the Kullback-Leibler divergence from the given probabilty distribution
+        Calculates the Kullback-Leibler divergence from the given probability distribution
 
         :param other: ([float]) the distribution to compare with
         :return: (float) the KL divergence of the two distributions
@@ -50,7 +50,7 @@ class ProbabilityDistribution(object):
 
     def entropy(self):
         """
-        Returns shannon's entropy of the probability
+        Returns Shannon's entropy of the probability
 
         :return: (float) the entropy
         """
@@ -58,7 +58,7 @@ class ProbabilityDistribution(object):
 
     def sample(self):
         """
-        returns a sample from the probabilty distribution
+        returns a sample from the probability distribution
 
         :return: (Tensorflow Tensor) the stochastic action
         """
@@ -104,8 +104,8 @@ class ProbabilityDistributionType(object):
 
         :param pi_latent_vector: ([float]) the latent pi values
         :param vf_latent_vector: ([float]) the latent vf values
-        :param init_scale: (float) the inital scale of the distribution
-        :param init_bias: (float) the inital bias of the distribution
+        :param init_scale: (float) the initial scale of the distribution
+        :param init_bias: (float) the initial bias of the distribution
         :return: (ProbabilityDistribution) the instance of the ProbabilityDistribution associated
         """
         raise NotImplementedError
@@ -180,7 +180,7 @@ class CategoricalProbabilityDistributionType(ProbabilityDistributionType):
         return []
 
     def sample_dtype(self):
-        return tf.int32
+        return tf.int64
 
 
 class MultiCategoricalProbabilityDistributionType(ProbabilityDistributionType):
@@ -213,13 +213,13 @@ class MultiCategoricalProbabilityDistributionType(ProbabilityDistributionType):
         return [len(self.n_vec)]
 
     def sample_dtype(self):
-        return tf.int32
+        return tf.int64
 
 
 class DiagGaussianProbabilityDistributionType(ProbabilityDistributionType):
     def __init__(self, size):
         """
-        The probability distribution type for multivariate gaussian input
+        The probability distribution type for multivariate Gaussian input
 
         :param size: (int) the number of dimensions of the multivariate gaussian
         """
@@ -258,9 +258,9 @@ class DiagGaussianProbabilityDistributionType(ProbabilityDistributionType):
 class BernoulliProbabilityDistributionType(ProbabilityDistributionType):
     def __init__(self, size):
         """
-        The probability distribution type for bernoulli input
+        The probability distribution type for Bernoulli input
 
-        :param size: (int) the number of dimensions of the bernoulli distribution
+        :param size: (int) the number of dimensions of the Bernoulli distribution
         """
         self.size = size
 
@@ -291,12 +291,19 @@ class CategoricalProbabilityDistribution(ProbabilityDistribution):
         :param logits: ([float]) the categorical logits input
         """
         self.logits = logits
-        self._action_mask_ph = action_mask
-        self.action_mask_index = action_mask_index
+        self._action_mask_ph = None
+        self.action_mask_indices = None
         super(CategoricalProbabilityDistribution, self).__init__()
 
-    def set_action_mask(self, action_mask_ph):
-        self._action_mask_ph = action_mask_ph
+    def set_action_mask_ph(self, action_mask_ph):
+        if isinstance(action_mask_ph, list):
+            self._action_mask_ph = action_mask_ph[0]
+        else:
+            self._action_mask_ph = action_mask_ph
+
+    def set_action_mask_indices(self, indices):
+        if len(indices) != 0:
+            self.action_mask_indices = indices
 
     @property
     def action_mask_ph(self):
@@ -308,11 +315,13 @@ class CategoricalProbabilityDistribution(ProbabilityDistribution):
     def mode(self):
         # mask: 0 is valid action, -inf is invalid action
         # [1, 2, 3] add [0, -inf, 0] = [1, -inf, 3]
-        if self.action_mask_index:
-            logits = tf.add(self.logits, self.action_mask_ph[:, self.action_mask_index()[0]])
+        if self.action_mask_indices:
+            sliced_action_mask = self.action_mask_ph
+            for i, index in enumerate(self.action_mask_indices):
+                sliced_action_mask = sliced_action_mask[:, index()[0]]
+            logits = tf.add(self.logits, sliced_action_mask)
         else:
-            logits = self.logits
-            logits = tf.add(logits, self.action_mask_ph)
+            logits = tf.add(self.logits, self.action_mask_ph)
         return tf.argmax(logits, axis=-1)
 
     def neglogp(self, x):
@@ -341,24 +350,18 @@ class CategoricalProbabilityDistribution(ProbabilityDistribution):
         return tf.reduce_sum(p_0 * (tf.log(z_0) - a_0), axis=-1)
 
     def sample(self):
-        if self.action_mask_index:
-            # Gumbel-max trick to sample
-            # a categorical distribution (see http://amid.fish/humble-gumbel)
-            uniform = tf.random_uniform(tf.shape(self.logits), dtype=self.logits.dtype)
-
-            logits = tf.add(self.logits, self.action_mask_ph[:, self.action_mask_index()[0]])
-
-            return tf.argmax(logits - tf.log(-tf.log(uniform)), axis=-1)
+        if self.action_mask_indices:
+            sliced_action_mask = self.action_mask_ph
+            for i, index in enumerate(self.action_mask_indices):
+                sliced_action_mask = sliced_action_mask[:, index()[0]]
+            logits = tf.add(self.logits, sliced_action_mask)
         else:
-            # Gumbel-max trick to sample
-            # a categorical distribution (see http://amid.fish/humble-gumbel)
-            uniform = tf.random_uniform(tf.shape(self.logits), dtype=self.logits.dtype)
-            probability = self.logits - tf.log(-tf.log(uniform))
+            logits = tf.add(self.logits, self.action_mask_ph)
 
-            # mask: 0 is valid action, -inf is invalid action
-            # [1, 2, 3] add [0, -inf, 0] = [1, -inf, 3]
-            probability = tf.add(probability, self.action_mask_ph)
-            return tf.argmax(probability, axis=-1)
+        # Gumbel-max trick to sample
+        # a categorical distribution (see http://amid.fish/humble-gumbel)
+        uniform = tf.random_uniform(tf.shape(self.logits), dtype=self.logits.dtype)
+        return tf.argmax(logits - tf.log(-tf.log(uniform)), axis=-1)
 
     @classmethod
     def fromflat(cls, flat):
@@ -387,15 +390,19 @@ class MultiCategoricalProbabilityDistribution(ProbabilityDistribution):
         self.categoricals = [categorical1, categorical2]
         super(MultiCategoricalProbabilityDistribution, self).__init__()
 
-    @property
-    def action_mask_ph(self):
-        return self.categoricals[0].action_mask_ph, self.categoricals[1].action_mask_ph,
+    def set_action_mask_ph(self, action_mask_ph):
+        for i, categorical in enumerate(self.categoricals):
+            categorical.set_action_mask_ph(action_mask_ph[i])
+            action_samples = []
+            for j in range(0, i):
+                action_samples.append(self.categoricals[j].sample)
+            categorical.set_action_mask_indices(action_samples)
 
     def flatparam(self):
         return self.flat
 
     def mode(self):
-        return tf.cast(tf.stack([p.mode() for p in self.categoricals], axis=-1), tf.int32)
+        return tf.stack([p.mode() for p in self.categoricals], axis=-1)
 
     def neglogp(self, x):
         return tf.add_n([p.neglogp(px) for p, px in zip(self.categoricals, tf.unstack(x, axis=-1))])
@@ -407,7 +414,7 @@ class MultiCategoricalProbabilityDistribution(ProbabilityDistribution):
         return tf.add_n([p.entropy() for p in self.categoricals])
 
     def sample(self):
-        return tf.cast(tf.stack([p.sample() for p in self.categoricals], axis=-1), tf.int32)
+        return tf.stack([p.sample() for p in self.categoricals], axis=-1)
 
     @classmethod
     def fromflat(cls, flat):
@@ -423,9 +430,9 @@ class MultiCategoricalProbabilityDistribution(ProbabilityDistribution):
 class DiagGaussianProbabilityDistribution(ProbabilityDistribution):
     def __init__(self, flat):
         """
-        Probability distributions from multivariate gaussian input
+        Probability distributions from multivariate Gaussian input
 
-        :param flat: ([float]) the multivariate gaussian input data
+        :param flat: ([float]) the multivariate Gaussian input data
         """
         self.flat = flat
         mean, logstd = tf.split(axis=len(flat.shape) - 1, num_or_size_splits=2, value=flat)
@@ -463,10 +470,10 @@ class DiagGaussianProbabilityDistribution(ProbabilityDistribution):
     @classmethod
     def fromflat(cls, flat):
         """
-        Create an instance of this from new multivariate gaussian input
+        Create an instance of this from new multivariate Gaussian input
 
-        :param flat: ([float]) the multivariate gaussian input data
-        :return: (ProbabilityDistribution) the instance from the given multivariate gaussian input data
+        :param flat: ([float]) the multivariate Gaussian input data
+        :return: (ProbabilityDistribution) the instance from the given multivariate Gaussian input data
         """
         return cls(flat)
 
@@ -474,9 +481,9 @@ class DiagGaussianProbabilityDistribution(ProbabilityDistribution):
 class BernoulliProbabilityDistribution(ProbabilityDistribution):
     def __init__(self, logits):
         """
-        Probability distributions from bernoulli input
+        Probability distributions from Bernoulli input
 
-        :param logits: ([float]) the bernoulli input data
+        :param logits: ([float]) the Bernoulli input data
         """
         self.logits = logits
         self.probabilities = tf.sigmoid(logits)
@@ -510,10 +517,10 @@ class BernoulliProbabilityDistribution(ProbabilityDistribution):
     @classmethod
     def fromflat(cls, flat):
         """
-        Create an instance of this from new bernoulli input
+        Create an instance of this from new Bernoulli input
 
-        :param flat: ([float]) the bernoulli input data
-        :return: (ProbabilityDistribution) the instance from the given bernoulli input data
+        :param flat: ([float]) the Bernoulli input data
+        :return: (ProbabilityDistribution) the instance from the given Bernoulli input data
         """
         return cls(flat)
 
@@ -523,7 +530,7 @@ def make_proba_dist_type(ac_space):
     return an instance of ProbabilityDistributionType for the correct type of action space
 
     :param ac_space: (Gym Space) the input action space
-    :return: (ProbabilityDistributionType) the approriate instance of a ProbabilityDistributionType
+    :return: (ProbabilityDistributionType) the appropriate instance of a ProbabilityDistributionType
     """
     if isinstance(ac_space, spaces.Box):
         assert len(ac_space.shape) == 1, "Error: the action space must be a vector"

@@ -1,23 +1,23 @@
-from abc import ABC, abstractmethod
 import os
 import glob
-import warnings
-from collections import OrderedDict
 import json
 import zipfile
+import warnings
+from abc import ABC, abstractmethod
+from collections import OrderedDict, deque
+from typing import Union, List, Callable, Optional
 
+import gym
 import cloudpickle
 import numpy as np
-import gym
 import tensorflow as tf
 
-from stable_baselines.common import set_global_seeds
-from stable_baselines.common.save_util import (
-    is_json_serializable, data_to_json, json_to_data, params_to_bytes, bytes_to_params
-)
+from stable_baselines.common.misc_util import set_global_seeds
+from stable_baselines.common.save_util import data_to_json, json_to_data, params_to_bytes, bytes_to_params
 from stable_baselines.common.policies import get_policy_from_name, ActorCriticPolicy
+from stable_baselines.common.runners import AbstractEnvRunner
 from stable_baselines.common.vec_env import VecEnvWrapper, VecEnv, DummyVecEnv
-from stable_baselines.common.misc_util import flatten_mask
+from stable_baselines.common.callbacks import BaseCallback, CallbackList, ConvertCallback
 from stable_baselines import logger
 
 
@@ -60,6 +60,8 @@ class BaseRLModel(ABC):
         self.seed = seed
         self._param_load_ops = None
         self.n_cpu_tf_sess = n_cpu_tf_sess
+        self.episode_reward = None
+        self.ep_info_buf = None
 
         if env is not None:
             if isinstance(env, str):
@@ -73,7 +75,12 @@ class BaseRLModel(ABC):
                 if isinstance(env, VecEnv):
                     self.n_envs = env.num_envs
                 else:
-                    raise ValueError("Error: the model requires a vectorized environment, please use a VecEnv wrapper.")
+                    # The model requires a VecEnv
+                    # wrap it in a DummyVecEnv to avoid error
+                    self.env = DummyVecEnv([lambda: env])
+                    if self.verbose >= 1:
+                        print("Wrapping the env in a DummyVecEnv.")
+                    self.n_envs = 1
             else:
                 if isinstance(env, VecEnv):
                     if env.num_envs == 1:
@@ -136,6 +143,10 @@ class BaseRLModel(ABC):
 
         self.env = env
 
+        # Invalidated by environment change.
+        self.episode_reward = None
+        self.ep_info_buf = None
+
     def _init_num_timesteps(self, reset_num_timesteps=True):
         """
         Initialize and resets num_timesteps (total timesteps since beginning of training)
@@ -158,9 +169,26 @@ class BaseRLModel(ABC):
         """
         pass
 
-    def set_random_seed(self, seed):
+    def _init_callback(self,
+                      callback: Union[None, Callable, List[BaseCallback], BaseCallback]
+                      ) -> BaseCallback:
         """
-        :param seed: (int) Seed for the pseudo-random generators. If None,
+        :param callback: (Union[None, Callable, List[BaseCallback], BaseCallback])
+        :return: (BaseCallback)
+        """
+        # Convert a list of callbacks into a callback
+        if isinstance(callback, list):
+            callback = CallbackList(callback)
+        # Convert functional callback to object
+        if not isinstance(callback, BaseCallback):
+            callback = ConvertCallback(callback)
+
+        callback.init_callback(self)
+        return callback
+
+    def set_random_seed(self, seed: Optional[int]) -> None:
+        """
+        :param seed: (Optional[int]) Seed for the pseudo-random generators. If None,
             do not change the seeds.
         """
         # Ignore if the seed is None
@@ -169,12 +197,7 @@ class BaseRLModel(ABC):
         # Seed python, numpy and tf random generator
         set_global_seeds(seed)
         if self.env is not None:
-            if isinstance(self.env, VecEnv):
-                # Use a different seed for each env
-                for idx in range(self.env.num_envs):
-                    self.env.env_method("seed", seed + idx)
-            else:
-                self.env.seed(seed)
+            self.env.seed(seed)
             # Seed the action space
             # useful when selecting random actions
             self.env.action_space.seed(seed)
@@ -187,6 +210,10 @@ class BaseRLModel(ABC):
         if self.env is None:
             raise ValueError("Error: cannot train the model without a valid environment, please set an environment with"
                              "set_env(self, env) method.")
+        if self.episode_reward is None:
+            self.episode_reward = np.zeros((self.n_envs,))
+        if self.ep_info_buf is None:
+            self.ep_info_buf = deque(maxlen=100)
 
     @abstractmethod
     def get_parameter_list(self):
@@ -236,9 +263,9 @@ class BaseRLModel(ABC):
         """
         Return the placeholders needed for the pretraining:
         - obs_ph: observation placeholder
-        - actions_ph will be population with an action from the environement
+        - actions_ph will be population with an action from the environment
             (from the expert dataset)
-        - deterministic_actions_ph: e.g., in the case of a gaussian policy,
+        - deterministic_actions_ph: e.g., in the case of a Gaussian policy,
             the mean.
             
         :return: ((tf.placeholder)) (obs_ph, actions_ph, deterministic_actions_ph)
@@ -340,8 +367,12 @@ class BaseRLModel(ABC):
         Return a trained model.
 
         :param total_timesteps: (int) The total number of samples to train on
-        :param callback: (function (dict, dict)) -> boolean function called at every steps with state of the algorithm.
+        :param callback: (Union[callable, [callable], BaseCallback])
+            function called at every steps with state of the algorithm.
             It takes the local and global variables. If it returns False, training is aborted.
+            When the callback inherits from BaseCallback, you will have access
+            to additional stages of the training (training start/end),
+            please read the documentation for more details.
         :param log_interval: (int) The number of timesteps before logging.
         :param tb_log_name: (str) the name of the run for tensorboard log
         :param reset_num_timesteps: (bool) whether or not to reset the current timestep number (used in logging)
@@ -358,7 +389,7 @@ class BaseRLModel(ABC):
         :param state: (np.ndarray) The last states (can be None, used in recurrent policies)
         :param mask: (np.ndarray) The last masks (can be None, used in recurrent policies)
         :param deterministic: (bool) Whether or not to return deterministic actions.
-        :param action_mask: (np.ndarray) The last masks (can be None, used in block invalid action)
+        :param action_mask: ([bool]) The action mask
         :return: (np.ndarray, np.ndarray) the model's action and the next state (used in recurrent policies)
         """
         pass
@@ -386,7 +417,7 @@ class BaseRLModel(ABC):
             (set to None to return the complete action probability distribution)
         :param logp: (bool) (OPTIONAL) When specified with actions, returns probability in log-space.
             This has no effect if actions is None.
-        :param action_mask: ([bool]) (OPTIONAL) The action mask to be applied
+        :param action_mask: ([bool]) The action mask
         :return: (np.ndarray) the model's (log) action probability
         """
         pass
@@ -416,7 +447,6 @@ class BaseRLModel(ABC):
         if self._param_load_ops is None:
             self._setup_load_operations()
 
-        params = None
         if isinstance(load_path_or_dict, dict):
             # Assume `load_path_or_dict` is dict of variable.name -> ndarrays we want to load
             params = load_path_or_dict
@@ -437,6 +467,7 @@ class BaseRLModel(ABC):
             # We only need the parameters part of the file, so
             # only load that part.
             _, params = BaseRLModel._load_from_file(load_path_or_dict, load_data=False)
+            params = dict(params)
 
         feed_dict = {}
         param_update_ops = []
@@ -474,7 +505,7 @@ class BaseRLModel(ABC):
         Load the model from file
 
         :param load_path: (str or file-like) the saved parameter location
-        :param env: (Gym Envrionment) the new environment to run the loaded model on
+        :param env: (Gym Environment) the new environment to run the loaded model on
             (can be None if you only need prediction from a trained model)
         :param custom_objects: (dict) Dictionary of objects to replace
             upon loading. If a variable is present in this dictionary as a
@@ -736,6 +767,24 @@ class ActorCriticRLModel(BaseRLModel):
         self.step = None
         self.proba_step = None
         self.params = None
+        self._runner = None
+
+    def _make_runner(self) -> AbstractEnvRunner:
+        """Builds a new Runner.
+
+        Lazily called whenever `self.runner` is accessed and `self._runner is None`.
+        """
+        raise NotImplementedError("This model is not configured to use a Runner")
+
+    @property
+    def runner(self) -> AbstractEnvRunner:
+        if self._runner is None:
+            self._runner = self._make_runner()
+        return self._runner
+
+    def set_env(self, env):
+        self._runner = None  # New environment invalidates `self._runner`.
+        super().set_env(env)
 
     @abstractmethod
     def setup_model(self):
@@ -761,7 +810,7 @@ class ActorCriticRLModel(BaseRLModel):
         vectorized_env = self._is_vectorized_observation(observation, self.observation_space)
 
         observation = observation.reshape((-1,) + self.observation_space.shape)
-        actions, _, states, _ = self.step(observation, state, mask, action_mask=action_masks, deterministic=deterministic)
+        actions, _, states, _ = self.step(observation, state, mask, deterministic=deterministic, action_mask=action_mask)
 
         clipped_actions = actions
         # Clip the actions to avoid out of bound error
@@ -868,7 +917,7 @@ class ActorCriticRLModel(BaseRLModel):
         Load the model from file
 
         :param load_path: (str or file-like) the saved parameter location
-        :param env: (Gym Envrionment) the new environment to run the loaded model on
+        :param env: (Gym Environment) the new environment to run the loaded model on
             (can be None if you only need prediction from a trained model)
         :param custom_objects: (dict) Dictionary of objects to replace
             upon loading. If a variable is present in this dictionary as a
@@ -951,7 +1000,7 @@ class OffPolicyRLModel(BaseRLModel):
         Load the model from file
 
         :param load_path: (str or file-like) the saved parameter location
-        :param env: (Gym Envrionment) the new environment to run the loaded model on
+        :param env: (Gym Environment) the new environment to run the loaded model on
             (can be None if you only need prediction from a trained model)
         :param custom_objects: (dict) Dictionary of objects to replace
             upon loading. If a variable is present in this dictionary as a
