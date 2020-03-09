@@ -369,14 +369,16 @@ class A2CRunner(AbstractEnvRunner):
                     # Return dummy values
                     return [None] * 8
 
+            self.action_masks.clear()
             for info in infos:
                 maybe_ep_info = info.get('episode')
                 if maybe_ep_info is not None:
                     ep_infos.append(maybe_ep_info)
 
-                # actoin mask
+                # action mask
                 env_action_mask = info.get('action_mask')
-                self.action_masks.append(flatten_mask(self.env.action_space, env_action_mask))
+                if env_action_mask is not None:
+                    self.action_masks.append(env_action_mask)
 
             self.states = states
             self.dones = dones

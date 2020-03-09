@@ -35,7 +35,7 @@ class DiscreteActionMaskEnv(gym.Env):
         pass
 
     def finish(self):
-        return self.counter == 250
+        return self.counter == 128
 
     def state(self):
         tmp = np.reshape(np.array([*range(100)]), self.observation_shape)

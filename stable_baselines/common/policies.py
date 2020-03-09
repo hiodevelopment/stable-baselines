@@ -242,7 +242,7 @@ class BasePolicy(ABC):
         :param td_map: (dictionary) The feed_dict for the tensorflow session
         :return: ([float]) The converted action mask, as an np array
         """
-        if action_mask is None or len(action_mask) == 0:
+        if len(action_mask) == 0:
             return td_map
         elif isinstance(self.ac_space, Discrete):
             adjusted_action_mask = np.array(action_mask, dtype=np.float32)
@@ -252,8 +252,7 @@ class BasePolicy(ABC):
             return td_map
         elif isinstance(self.ac_space, MultiDiscrete):
             for i, mask in enumerate(action_mask[0]):
-                adjusted_action_mask = np.array(mask, dtype=np.float32)
-                adjusted_action_mask = np.expand_dims(adjusted_action_mask, axis=0)
+                adjusted_action_mask = np.expand_dims(np.array(mask, dtype=np.float32), axis=0)
                 adjusted_action_mask[adjusted_action_mask == 0] = -10
                 adjusted_action_mask[adjusted_action_mask == 1] = 0
                 td_map[self.action_mask_phs[i]] = adjusted_action_mask
@@ -496,7 +495,7 @@ class LstmPolicy(RecurrentActorCriticPolicy):
                 value_fn = linear(rnn_output, 'vf', 1)
 
                 self._proba_distribution, self._policy, self.q_value = \
-                    self.pdtype.proba_distribution_from_latent(rnn_output, rnn_output, self.action_mask_ph1, self.action_mask_ph2)
+                    self.pdtype.proba_distribution_from_latent(rnn_output, rnn_output)
 
             self._value_fn = value_fn
         else:  # Use the new net_arch parameter
@@ -563,7 +562,7 @@ class LstmPolicy(RecurrentActorCriticPolicy):
                 self._value_fn = linear(latent_value, 'vf', 1)
                 # TODO: why not init_scale = 0.001 here like in the feedforward
                 self._proba_distribution, self._policy, self.q_value = \
-                    self.pdtype.proba_distribution_from_latent(latent_policy, latent_value, self.action_mask_ph1, self.action_mask_ph2)
+                    self.pdtype.proba_distribution_from_latent(latent_policy, latent_value)
         self._setup_init()
 
     def step(self, obs, state=None, mask=None, deterministic=False, action_mask=None):
@@ -632,7 +631,7 @@ class FeedForwardPolicy(ActorCriticPolicy):
             self._value_fn = linear(vf_latent, 'vf', 1)
 
             self._proba_distribution, self._policy, self.q_value = \
-                self.pdtype.proba_distribution_from_latent(pi_latent, vf_latent, self.action_mask_ph1, self.action_mask_ph2, init_scale=0.01)
+                self.pdtype.proba_distribution_from_latent(pi_latent, vf_latent, init_scale=0.01)
 
         self._setup_init()
 
