@@ -33,6 +33,14 @@ class DQNPolicy(BasePolicy):
         self.value_fn = None
         self.q_values = None
         self.dueling = dueling
+        if isinstance(ac_space, Discrete):
+            with tf.variable_scope("input", reuse=False):
+                no_mask = tf.zeros_like(np.zeros(shape=(1, self.n_actions), dtype=np.float32))
+                self._action_mask_ph = tf.placeholder_with_default(no_mask, shape=(n_batch, self.n_actions),
+                                                                   name="action_mask_ph")
+                no_mask_prob = tf.ones_like(np.ones(shape=(1, self.n_actions), dtype=np.float32))
+                self._action_mask_probs_ph = tf.placeholder_with_default(no_mask_prob, shape=(n_batch, self.n_actions),
+                                                           name="action_mask_probs_ph")
 
     def _setup_init(self):
         """
@@ -42,7 +50,7 @@ class DQNPolicy(BasePolicy):
             assert self.q_values is not None
             self.policy_proba = tf.nn.softmax(self.q_values)
 
-    def step(self, obs, state=None, mask=None, deterministic=True):
+    def step(self, obs, state=None, mask=None, deterministic=True, action_mask=None):
         """
         Returns the q_values for a single step
 
@@ -50,17 +58,19 @@ class DQNPolicy(BasePolicy):
         :param state: (np.ndarray float) The last states (used in recurrent policies)
         :param mask: (np.ndarray float) The last masks (used in recurrent policies)
         :param deterministic: (bool) Whether or not to return deterministic actions.
+        :param action_mask: ([bool]) The action mask to be applied (used in some discrete action spaces)
         :return: (np.ndarray int, np.ndarray float, np.ndarray float) actions, q_values, states
         """
         raise NotImplementedError
 
-    def proba_step(self, obs, state=None, mask=None):
+    def proba_step(self, obs, state=None, mask=None, action_mask=None):
         """
         Returns the action probability for a single step
 
         :param obs: (np.ndarray float or int) The current observation of the environment
         :param state: (np.ndarray float) The last states (used in recurrent policies)
         :param mask: (np.ndarray float) The last masks (used in recurrent policies)
+        :param action_mask: ([bool]) The action mask to be applied (used in some discrete action spaces)
         :return: (np.ndarray float) the action probability
         """
         raise NotImplementedError
@@ -127,15 +137,20 @@ class FeedForwardPolicy(DQNPolicy):
                     state_score = tf_layers.fully_connected(state_out, num_outputs=1, activation_fn=None)
                 action_scores_mean = tf.reduce_mean(action_scores, axis=1)
                 action_scores_centered = action_scores - tf.expand_dims(action_scores_mean, axis=1)
-                q_out = state_score + action_scores_centered
+                q_out = tf.add(state_score + action_scores_centered, self.action_mask_ph)
             else:
-                q_out = action_scores
+                q_out = tf.add(action_scores, self.action_mask_ph)
 
         self.q_values = q_out
         self._setup_init()
 
-    def step(self, obs, state=None, mask=None, deterministic=True):
-        q_values, actions_proba = self.sess.run([self.q_values, self.policy_proba], {self.obs_ph: obs})
+    def step(self, obs, state=None, mask=None, deterministic=True, action_mask=None):
+        feed_dict = {self.obs_ph: obs}
+        if action_mask is not None:
+            if len(action_mask) != 0:
+                feed_dict[self.action_mask_ph] = self.prepare_action_mask(action_mask)
+
+        q_values, actions_proba = self.sess.run([self.q_values, self.policy_proba], feed_dict)
         if deterministic:
             actions = np.argmax(q_values, axis=1)
         else:
@@ -148,8 +163,11 @@ class FeedForwardPolicy(DQNPolicy):
 
         return actions, q_values, None
 
-    def proba_step(self, obs, state=None, mask=None):
-        return self.sess.run(self.policy_proba, {self.obs_ph: obs})
+    def proba_step(self, obs, state=None, mask=None, action_mask=None):
+        feed_dict = {self.obs_ph: obs}
+        if action_mask is not None:
+            feed_dict[self.action_mask_ph] = self.prepare_action_mask(action_mask)
+        return self.sess.run(self.policy_proba, feed_dict)
 
 
 class CnnPolicy(FeedForwardPolicy):

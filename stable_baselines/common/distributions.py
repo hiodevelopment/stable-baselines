@@ -5,11 +5,11 @@ from gym import spaces
 
 from stable_baselines.common.tf_layers import linear
 
-
 class ProbabilityDistribution(object):
     """
     Base class for describing a probability distribution.
     """
+
     def __init__(self):
         super(ProbabilityDistribution, self).__init__()
 
@@ -97,7 +97,8 @@ class ProbabilityDistributionType(object):
         """
         return self.probability_distribution_class()(flat)
 
-    def proba_distribution_from_latent(self, pi_latent_vector, vf_latent_vector, init_scale=1.0, init_bias=0.0):
+    def proba_distribution_from_latent(self, pi_latent_vector, vf_latent_vector, action_mask, init_scale=1.0,
+                                       init_bias=0.0):
         """
         returns the probability distribution from latent values
 
@@ -166,7 +167,8 @@ class CategoricalProbabilityDistributionType(ProbabilityDistributionType):
     def probability_distribution_class(self):
         return CategoricalProbabilityDistribution
 
-    def proba_distribution_from_latent(self, pi_latent_vector, vf_latent_vector, init_scale=1.0, init_bias=0.0):
+    def proba_distribution_from_latent(self, pi_latent_vector, vf_latent_vector, action_mask, init_scale=1.0,
+                                       init_bias=0.0):
         pdparam = linear(pi_latent_vector, 'pi', self.n_cat, init_scale=init_scale, init_bias=init_bias)
         q_values = linear(vf_latent_vector, 'q', self.n_cat, init_scale=init_scale, init_bias=init_bias)
         return self.proba_distribution_from_flat(pdparam), pdparam, q_values
@@ -196,13 +198,13 @@ class MultiCategoricalProbabilityDistributionType(ProbabilityDistributionType):
     def probability_distribution_class(self):
         return MultiCategoricalProbabilityDistribution
 
-    def proba_distribution_from_flat(self, flat):
-        return MultiCategoricalProbabilityDistribution(self.n_vec, flat)
+    def proba_distribution_from_flat(self, flat, mask1, mask2):
+        return MultiCategoricalProbabilityDistribution(self.n_vec, flat, mask1, mask2)
 
-    def proba_distribution_from_latent(self, pi_latent_vector, vf_latent_vector, init_scale=1.0, init_bias=0.0):
+    def proba_distribution_from_latent(self, pi_latent_vector, vf_latent_vector, action_mask1, action_mask2, init_scale=1.0, init_bias=0.0):
         pdparam = linear(pi_latent_vector, 'pi', sum(self.n_vec), init_scale=init_scale, init_bias=init_bias)
         q_values = linear(vf_latent_vector, 'q', sum(self.n_vec), init_scale=init_scale, init_bias=init_bias)
-        return self.proba_distribution_from_flat(pdparam), pdparam, q_values
+        return self.proba_distribution_from_flat(pdparam, action_mask1, action_mask2), pdparam, q_values
 
     def param_shape(self):
         return [sum(self.n_vec)]
@@ -235,7 +237,8 @@ class DiagGaussianProbabilityDistributionType(ProbabilityDistributionType):
         """
         return self.probability_distribution_class()(flat)
 
-    def proba_distribution_from_latent(self, pi_latent_vector, vf_latent_vector, init_scale=1.0, init_bias=0.0):
+    def proba_distribution_from_latent(self, pi_latent_vector, vf_latent_vector, action_mask, init_scale=1.0,
+                                       init_bias=0.0):
         mean = linear(pi_latent_vector, 'pi', self.size, init_scale=init_scale, init_bias=init_bias)
         logstd = tf.get_variable(name='pi/logstd', shape=[1, self.size], initializer=tf.zeros_initializer())
         pdparam = tf.concat([mean, mean * 0.0 + logstd], axis=1)
@@ -264,7 +267,8 @@ class BernoulliProbabilityDistributionType(ProbabilityDistributionType):
     def probability_distribution_class(self):
         return BernoulliProbabilityDistribution
 
-    def proba_distribution_from_latent(self, pi_latent_vector, vf_latent_vector, init_scale=1.0, init_bias=0.0):
+    def proba_distribution_from_latent(self, pi_latent_vector, vf_latent_vector, action_mask, init_scale=1.0,
+                                       init_bias=0.0):
         pdparam = linear(pi_latent_vector, 'pi', self.size, init_scale=init_scale, init_bias=init_bias)
         q_values = linear(vf_latent_vector, 'q', self.size, init_scale=init_scale, init_bias=init_bias)
         return self.proba_distribution_from_flat(pdparam), pdparam, q_values
@@ -280,7 +284,7 @@ class BernoulliProbabilityDistributionType(ProbabilityDistributionType):
 
 
 class CategoricalProbabilityDistribution(ProbabilityDistribution):
-    def __init__(self, logits):
+    def __init__(self, logits, action_mask, action_mask_index=None):
         """
         Probability distributions from categorical input
 
@@ -371,7 +375,7 @@ class CategoricalProbabilityDistribution(ProbabilityDistribution):
 
 
 class MultiCategoricalProbabilityDistribution(ProbabilityDistribution):
-    def __init__(self, nvec, flat):
+    def __init__(self, nvec, flat, mask1, mask2):
         """
         Probability distributions from multicategorical input
 
@@ -379,7 +383,11 @@ class MultiCategoricalProbabilityDistribution(ProbabilityDistribution):
         :param flat: ([float]) the categorical logits input
         """
         self.flat = flat
-        self.categoricals = list(map(CategoricalProbabilityDistribution, tf.split(flat, nvec, axis=-1)))
+
+        split = tf.split(flat, nvec, axis=-1)
+        categorical1 = CategoricalProbabilityDistribution(split[0], mask1)
+        categorical2 = CategoricalProbabilityDistribution(split[1], mask2, categorical1.sample)
+        self.categoricals = [categorical1, categorical2]
         super(MultiCategoricalProbabilityDistribution, self).__init__()
 
     def set_action_mask_ph(self, action_mask_ph):

@@ -226,7 +226,7 @@ class ACKTR(ActorCriticRLModel):
     def _train_step(self, obs, states, rewards, masks, actions, values, update, writer):
         """
         applies a training step to the model
-
+        
         :param obs: ([float]) The input observations
         :param states: ([float]) The states (used for recurrent policies)
         :param rewards: ([float]) The rewards from the environment
@@ -412,3 +412,4 @@ class ACKTR(ActorCriticRLModel):
         params_to_save = self.get_parameters()
 
         self._save_to_file(save_path, data=data, params=params_to_save, cloudpickle=cloudpickle)
+        

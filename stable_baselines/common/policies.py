@@ -191,6 +191,16 @@ class BasePolicy(ABC):
         """tf.Tensor: placeholder for actions, shape (self.n_batch, ) + self.ac_space.shape."""
         return self._action_ph
 
+    @property
+    def action_mask_ph1(self):
+        """tf.Tensor: placeholder for valid actions, shape (self.n_env, self.ac_space.n)"""
+        return self._action_mask_ph1
+
+    @property
+    def action_mask_ph2(self):
+        """tf.Tensor: placeholder for valid actions, shape (self.n_env, self.ac_space.n)"""
+        return self._action_mask_ph2
+
     @staticmethod
     def _kwargs_check(feature_extraction, kwargs):
         """
@@ -406,12 +416,14 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
                                                          n_batch, reuse=reuse, scale=scale)
 
         with tf.variable_scope("input", reuse=False):
-            self._dones_ph = tf.placeholder(tf.float32, (n_batch, ), name="dones_ph")  # (done t-1)
-            state_ph_shape = (self.n_env, ) + tuple(state_shape)
+            self._dones_ph = tf.placeholder(tf.float32, (n_batch,), name="dones_ph")  # (done t-1)
+            state_ph_shape = (self.n_env,) + tuple(state_shape)
             self._states_ph = tf.placeholder(tf.float32, state_ph_shape, name="states_ph")
 
-        initial_state_shape = (self.n_env, ) + tuple(state_shape)
+        initial_state_shape = (self.n_env,) + tuple(state_shape)
         self._initial_state = np.zeros(initial_state_shape, dtype=np.float32)
+
+        self._action_mask_ph = tf.placeholder(dtype=tf.float32, shape=(None, ac_space.n), name="action_mask_ph")
 
     @property
     def initial_state(self):
@@ -434,6 +446,7 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         Cf base class doc.
         """
         raise NotImplementedError
+
 
 
 class LstmPolicy(RecurrentActorCriticPolicy):
@@ -465,7 +478,7 @@ class LstmPolicy(RecurrentActorCriticPolicy):
                  **kwargs):
         # state_shape = [n_lstm * 2] dim because of the cell and hidden states of the LSTM
         super(LstmPolicy, self).__init__(sess, ob_space, ac_space, n_env, n_steps, n_batch,
-                                         state_shape=(2 * n_lstm, ), reuse=reuse,
+                                         state_shape=(2 * n_lstm,), reuse=reuse,
                                          scale=(feature_extraction == "cnn"))
 
         self._kwargs_check(feature_extraction, kwargs)
@@ -492,7 +505,7 @@ class LstmPolicy(RecurrentActorCriticPolicy):
                 value_fn = linear(rnn_output, 'vf', 1)
 
                 self._proba_distribution, self._policy, self.q_value = \
-                    self.pdtype.proba_distribution_from_latent(rnn_output, rnn_output)
+                    self.pdtype.proba_distribution_from_latent(rnn_output, rnn_output, self.action_mask_ph1, self.action_mask_ph2)
 
             self._value_fn = value_fn
         else:  # Use the new net_arch parameter
@@ -559,7 +572,7 @@ class LstmPolicy(RecurrentActorCriticPolicy):
                 self._value_fn = linear(latent_value, 'vf', 1)
                 # TODO: why not init_scale = 0.001 here like in the feedforward
                 self._proba_distribution, self._policy, self.q_value = \
-                    self.pdtype.proba_distribution_from_latent(latent_policy, latent_value)
+                    self.pdtype.proba_distribution_from_latent(latent_policy, latent_value, self.action_mask_ph1, self.action_mask_ph2)
         self._setup_init()
 
     def step(self, obs, state=None, mask=None, deterministic=False, action_mask=None):
@@ -628,7 +641,7 @@ class FeedForwardPolicy(ActorCriticPolicy):
             self._value_fn = linear(vf_latent, 'vf', 1)
 
             self._proba_distribution, self._policy, self.q_value = \
-                self.pdtype.proba_distribution_from_latent(pi_latent, vf_latent, init_scale=0.01)
+                self.pdtype.proba_distribution_from_latent(pi_latent, vf_latent, self.action_mask_ph1, self.action_mask_ph2, init_scale=0.01)
 
         self._setup_init()
 
