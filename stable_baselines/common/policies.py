@@ -191,16 +191,6 @@ class BasePolicy(ABC):
         """tf.Tensor: placeholder for actions, shape (self.n_batch, ) + self.ac_space.shape."""
         return self._action_ph
 
-    @property
-    def action_mask_ph1(self):
-        """tf.Tensor: placeholder for valid actions, shape (self.n_env, self.ac_space.n)"""
-        return self._action_mask_ph1
-
-    @property
-    def action_mask_ph2(self):
-        """tf.Tensor: placeholder for valid actions, shape (self.n_env, self.ac_space.n)"""
-        return self._action_mask_ph2
-
     @staticmethod
     def _kwargs_check(feature_extraction, kwargs):
         """
@@ -505,7 +495,7 @@ class LstmPolicy(RecurrentActorCriticPolicy):
                 value_fn = linear(rnn_output, 'vf', 1)
 
                 self._proba_distribution, self._policy, self.q_value = \
-                    self.pdtype.proba_distribution_from_latent(rnn_output, rnn_output, self.action_mask_ph1, self.action_mask_ph2)
+                    self.pdtype.proba_distribution_from_latent(rnn_output, rnn_output)
 
             self._value_fn = value_fn
         else:  # Use the new net_arch parameter
@@ -572,7 +562,7 @@ class LstmPolicy(RecurrentActorCriticPolicy):
                 self._value_fn = linear(latent_value, 'vf', 1)
                 # TODO: why not init_scale = 0.001 here like in the feedforward
                 self._proba_distribution, self._policy, self.q_value = \
-                    self.pdtype.proba_distribution_from_latent(latent_policy, latent_value, self.action_mask_ph1, self.action_mask_ph2)
+                    self.pdtype.proba_distribution_from_latent(latent_policy, latent_value)
         self._setup_init()
 
     def step(self, obs, state=None, mask=None, deterministic=False, action_mask=None):
@@ -641,7 +631,7 @@ class FeedForwardPolicy(ActorCriticPolicy):
             self._value_fn = linear(vf_latent, 'vf', 1)
 
             self._proba_distribution, self._policy, self.q_value = \
-                self.pdtype.proba_distribution_from_latent(pi_latent, vf_latent, self.action_mask_ph1, self.action_mask_ph2, init_scale=0.01)
+                self.pdtype.proba_distribution_from_latent(pi_latent, vf_latent, init_scale=0.01)
 
         self._setup_init()
 

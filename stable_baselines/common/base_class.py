@@ -804,7 +804,7 @@ class ActorCriticRLModel(BaseRLModel):
         action_masks = []
         if action_mask is not None:
             for env_action_mask in action_mask:
-                action_masks.append(flatten_mask(self.env.action_space, env_action_mask))
+                action_masks.append(env_action_mask)
 
         observation = np.array(observation)
         vectorized_env = self._is_vectorized_observation(observation, self.observation_space)

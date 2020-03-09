@@ -20,7 +20,7 @@ def test_action_mask_learn_ppo2(vec_env, policy, env_class):
     env = vec_env([env_class])
 
     model = PPO2(policy, env, verbose=0)
-    model.learn(total_timesteps=512)
+    model.learn(total_timesteps=128)
     env.close()
 
 
@@ -54,7 +54,7 @@ def test_action_mask_learn_a2c(vec_env, policy, env_class):
     env = vec_env([env_class])
 
     model = A2C(policy, env, verbose=0)
-    model.learn(total_timesteps=512)
+    model.learn(total_timesteps=128)
     env.close()
 
 
