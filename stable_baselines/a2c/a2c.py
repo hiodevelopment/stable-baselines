@@ -336,6 +336,7 @@ class A2CRunner(AbstractEnvRunner):
         """
         super(A2CRunner, self).__init__(env=env, model=model, n_steps=n_steps)
         self.gamma = gamma
+        self.action_masks = []
 
     def _run(self):
         """
@@ -348,7 +349,7 @@ class A2CRunner(AbstractEnvRunner):
         mb_states = self.states
         ep_infos = []
         for _ in range(self.n_steps):
-            actions, values, states, _ = self.model.step(self.obs, self.states, self.dones)
+            actions, values, states, _ = self.model.step(self.obs, self.states, self.dones, action_mask=self.action_masks)
             mb_obs.append(np.copy(self.obs))
             mb_actions.append(actions)
             mb_values.append(values)
@@ -368,10 +369,16 @@ class A2CRunner(AbstractEnvRunner):
                     # Return dummy values
                     return [None] * 8
 
+            self.action_masks.clear()
             for info in infos:
                 maybe_ep_info = info.get('episode')
                 if maybe_ep_info is not None:
                     ep_infos.append(maybe_ep_info)
+
+                # action mask
+                env_action_mask = info.get('action_mask')
+                if env_action_mask is not None:
+                    self.action_masks.append(env_action_mask)
 
             self.states = states
             self.dones = dones

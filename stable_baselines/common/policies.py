@@ -242,7 +242,7 @@ class BasePolicy(ABC):
         :param td_map: (dictionary) The feed_dict for the tensorflow session
         :return: ([float]) The converted action mask, as an np array
         """
-        if action_mask is None or len(action_mask) == 0:
+        if len(action_mask) == 0:
             return td_map
         elif isinstance(self.ac_space, Discrete):
             adjusted_action_mask = np.array(action_mask, dtype=np.float32)
@@ -252,8 +252,7 @@ class BasePolicy(ABC):
             return td_map
         elif isinstance(self.ac_space, MultiDiscrete):
             for i, mask in enumerate(action_mask[0]):
-                adjusted_action_mask = np.array(mask, dtype=np.float32)
-                adjusted_action_mask = np.expand_dims(adjusted_action_mask, axis=0)
+                adjusted_action_mask = np.expand_dims(np.array(mask, dtype=np.float32), axis=0)
                 adjusted_action_mask[adjusted_action_mask == 0] = -10
                 adjusted_action_mask[adjusted_action_mask == 1] = 0
                 td_map[self.action_mask_phs[i]] = adjusted_action_mask
