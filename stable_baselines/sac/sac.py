@@ -499,7 +499,7 @@ class SAC(OffPolicyRLModel):
             callback.on_training_end()
             return self
 
-    def action_probability(self, observation, state=None, mask=None, actions=None, logp=False):
+    def action_probability(self, observation, state=None, mask=None, actions=None, logp=False, action_mask=None):
         if actions is not None:
             raise ValueError("Error: SAC does not have action probabilities.")
 
@@ -508,7 +508,7 @@ class SAC(OffPolicyRLModel):
 
         return None
 
-    def predict(self, observation, state=None, mask=None, deterministic=True):
+    def predict(self, observation, state=None, mask=None, deterministic=True, action_mask=None):
         observation = np.array(observation)
         vectorized_env = self._is_vectorized_observation(observation, self.observation_space)
 
