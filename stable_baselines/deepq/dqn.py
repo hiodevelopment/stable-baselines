@@ -54,7 +54,6 @@ class DQN(OffPolicyRLModel):
     :param n_cpu_tf_sess: (int) The number of threads for TensorFlow operations
         If None, the number of cpu of the current machine will be used.
     """
-
     def __init__(self, policy, env, gamma=0.99, learning_rate=5e-4, buffer_size=50000, exploration_fraction=0.1,
                  exploration_final_eps=0.02, exploration_initial_eps=1.0, train_freq=1, batch_size=32, double_q=True,
                  learning_starts=1000, target_network_update_freq=500, prioritized_replay=False,
@@ -65,8 +64,7 @@ class DQN(OffPolicyRLModel):
 
         # TODO: replay_buffer refactoring
         super(DQN, self).__init__(policy=policy, env=env, replay_buffer=None, verbose=verbose, policy_base=DQNPolicy,
-                                  requires_vec_env=False, policy_kwargs=policy_kwargs, seed=seed,
-                                  n_cpu_tf_sess=n_cpu_tf_sess)
+                                  requires_vec_env=False, policy_kwargs=policy_kwargs, seed=seed, n_cpu_tf_sess=n_cpu_tf_sess)
 
         self.param_noise = param_noise
         self.learning_starts = learning_starts
@@ -192,6 +190,9 @@ class DQN(OffPolicyRLModel):
 
             reset = True
             obs = self.env.reset()
+            # Retrieve unnormalized observation for saving into the buffer
+            if self._vec_normalize_env is not None:
+                obs_ = self._vec_normalize_env.get_original_obs().squeeze()
 
             for _ in range(total_timesteps):
                 # Take action and update exploration to the newest value
@@ -212,7 +213,7 @@ class DQN(OffPolicyRLModel):
                     kwargs['update_param_noise_threshold'] = update_param_noise_threshold
                     kwargs['update_param_noise_scale'] = True
                 with self.sess.as_default():
-                    action = self.act(np.array(obs)[None], update_eps=update_eps, action_mask=action_mask, **kwargs)[0]
+                    action = self.act(np.array(obs)[None], update_eps=update_eps, **kwargs)[0]
                 env_action = action
                 reset = False
                 new_obs, rew, done, info = self.env.step(env_action)
@@ -223,20 +224,27 @@ class DQN(OffPolicyRLModel):
                 if callback.on_step() is False:
                     break
 
+                # Store only the unnormalized version
+                if self._vec_normalize_env is not None:
+                    new_obs_ = self._vec_normalize_env.get_original_obs().squeeze()
+                    reward_ = self._vec_normalize_env.get_original_reward().squeeze()
+                else:
+                    # Avoid changing the original ones
+                    obs_, new_obs_, reward_ = obs, new_obs, rew
                 # Store transition in the replay buffer.
-                self.replay_buffer.add(obs, action, rew, new_obs, float(done))
+                self.replay_buffer.add(obs_, action, reward_, new_obs_, float(done))
                 obs = new_obs
-
-                if action_mask is not None:
-                    action_mask = [action_mask]
+                # Save the unnormalized observation
+                if self._vec_normalize_env is not None:
+                    obs_ = new_obs_
 
                 if writer is not None:
-                    ep_rew = np.array([rew]).reshape((1, -1))
+                    ep_rew = np.array([reward_]).reshape((1, -1))
                     ep_done = np.array([done]).reshape((1, -1))
                     tf_util.total_episode_reward_logger(self.episode_reward, ep_rew, ep_done, writer,
                                                         self.num_timesteps)
 
-                episode_rewards[-1] += rew
+                episode_rewards[-1] += reward_
                 if done:
                     maybe_is_success = info.get('is_success')
                     if maybe_is_success is not None:
@@ -259,11 +267,12 @@ class DQN(OffPolicyRLModel):
                         assert self.beta_schedule is not None, \
                                "BUG: should be LinearSchedule when self.prioritized_replay True"
                         experience = self.replay_buffer.sample(self.batch_size,
-                                                               beta=self.beta_schedule.value(self.num_timesteps))
+                                                               beta=self.beta_schedule.value(self.num_timesteps),
+                                                               env=self._vec_normalize_env)
                         (obses_t, actions, rewards, obses_tp1, dones, weights, batch_idxes) = experience
                     else:
-                        obses_t, actions, rewards, obses_tp1, dones = self.replay_buffer.sample(
-                            self.batch_size)
+                        obses_t, actions, rewards, obses_tp1, dones = self.replay_buffer.sample(self.batch_size,
+                                                                                                env=self._vec_normalize_env)
                         weights, batch_idxes = np.ones_like(rewards), None
                     # pytype:enable=bad-unpacking
 
@@ -282,8 +291,8 @@ class DQN(OffPolicyRLModel):
                                                                   dones, weights, sess=self.sess)
                         writer.add_summary(summary, self.num_timesteps)
                     else:
-                        _, td_errors = self._train_step(obses_t, actions, rewards, obses_tp1, obses_tp1, dones,
-                                                        weights, sess=self.sess)
+                        _, td_errors = self._train_step(obses_t, actions, rewards, obses_tp1, obses_tp1, dones, weights,
+                                                        sess=self.sess)
 
                     if self.prioritized_replay:
                         new_priorities = np.abs(td_errors) + self.prioritized_replay_eps
@@ -316,35 +325,25 @@ class DQN(OffPolicyRLModel):
         callback.on_training_end()
         return self
 
-    def predict(self, observation, state=None, mask=None, deterministic=True, action_mask=None):
+    def predict(self, observation, state=None, mask=None, deterministic=True):
         observation = np.array(observation)
         vectorized_env = self._is_vectorized_observation(observation, self.observation_space)
 
         observation = observation.reshape((-1,) + self.observation_space.shape)
-
-        action_masks = None
-        if action_mask is not None:
-            action_masks = []
-            for env_action_mask in action_mask:
-                if isinstance(self.env.action_space, gym.spaces.MultiDiscrete) and env_action_mask is not None:
-                    action_masks.append(np.concatenate(env_action_mask))
-                elif isinstance(self.env.action_space, gym.spaces.Discrete) and env_action_mask is not None:
-                    action_masks.append(env_action_mask)
-
         with self.sess.as_default():
-            actions, _, _ = self.step_model.step(observation, deterministic=deterministic, action_mask=action_masks)
+            actions, _, _ = self.step_model.step(observation, deterministic=deterministic)
 
         if not vectorized_env:
             actions = actions[0]
 
         return actions, None
 
-    def action_probability(self, observation, state=None, mask=None, actions=None, logp=False, action_mask=None):
+    def action_probability(self, observation, state=None, mask=None, actions=None, logp=False):
         observation = np.array(observation)
         vectorized_env = self._is_vectorized_observation(observation, self.observation_space)
 
         observation = observation.reshape((-1,) + self.observation_space.shape)
-        actions_proba = self.proba_step(observation, state, mask, action_mask=action_mask)
+        actions_proba = self.proba_step(observation, state, mask)
 
         if actions is not None:  # comparing the action distribution, to given actions
             actions = np.array([actions])

@@ -113,6 +113,7 @@ class BasePolicy(ABC):
         self.n_env = n_env
         self.n_steps = n_steps
         self.n_batch = n_batch
+        self.action_mask = None
         with tf.variable_scope("input", reuse=False):
             if obs_phs is None:
                 self._obs_ph, self._processed_obs = observation_input(ob_space, n_batch, scale=scale)
@@ -132,12 +133,8 @@ class BasePolicy(ABC):
                     mask_shape.append(size)
                     zeros_shape.append(size)
                     no_mask = tf.zeros(shape=zeros_shape, dtype=tf.float32)
-                    if i == 0:
-                        action_mask_ph = tf.placeholder_with_default(no_mask, shape=mask_shape,
-                                                                     name="action_mask_ph_{}".format(i))
-                    else:
-                        action_mask_ph = tf.placeholder_with_default(no_mask, shape=mask_shape,
-                                                                     name="action_mask_ph_{}".format(i))
+                    action_mask_ph = tf.placeholder_with_default(no_mask, shape=mask_shape,
+                                                                 name="action_mask_ph_{}".format(i))
                     self._action_mask_phs.append(action_mask_ph)
             elif isinstance(ac_space, Discrete):
                 no_mask = tf.zeros(shape=(1, ac_space.n), dtype=tf.float32)
@@ -163,6 +160,13 @@ class BasePolicy(ABC):
             [1]: (self.n_env, self.ac_space.nvec[0], self.ac_space.nvec[1])
             [2]: (self.n_env, self.ac_space.nvec[0], self.ac_space.nvec[1], self.ac_space.nvec[2]) ..."""
         return self._action_mask_phs
+
+    def set_action_mask(self, action_mask):
+        """Set the action mask directly. Useful for callback manipulation of the environment
+        :param action_mask: the action mask to set. Must be of shape stack(self.action_mask_phs)
+        :return: None
+        """
+        self.action_mask = action_mask
 
     @property
     def initial_state(self):
@@ -242,6 +246,8 @@ class BasePolicy(ABC):
         :param td_map: (dictionary) The feed_dict for the tensorflow session
         :return: ([float]) The converted action mask, as an np array
         """
+        if self.action_mask is not None:
+            action_mask = self.action_mask
         if len(action_mask) == 0:
             return td_map
         elif isinstance(self.ac_space, Discrete):
@@ -579,7 +585,7 @@ class LstmPolicy(RecurrentActorCriticPolicy):
         return self.sess.run(self.policy_proba, feed_dict)
 
     def value(self, obs, state=None, mask=None):
-        return self.sess.run(self.value_flat, feed_dict)
+        return self.sess.run(self.value_flat, {self.obs_ph: obs})
 
 
 class FeedForwardPolicy(ActorCriticPolicy):
