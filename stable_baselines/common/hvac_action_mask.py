@@ -61,6 +61,7 @@ class MultiDiscreteActionMaskEnv(gym.Env):
         self.room_params = room_params
         #print(room_params)
         # Get the environment simulator
+        """
         env = Environment.Environment(sim_params=sim_params,
                               room_params=room_params,
                               weather_selection='deterministic',
@@ -69,6 +70,15 @@ class MultiDiscreteActionMaskEnv(gym.Env):
                               occupancy_selection='deterministic',
                               occupancy_case=1,
                               occupancy_data_shift=1 * sim_params['n_days']
+                              )
+        """
+        ### Randomized
+        env = Environment.Environment(sim_params=sim_params,
+                              room_params=room_params,
+                              weather_selection='random',
+                              weather_data_shift=np.random.randint(365),
+                              occupancy_selection='random',
+                              occupancy_data_shift=np.random.randint(365)
                               )
         self.env = env
         #print(env)
@@ -334,12 +344,41 @@ class MultiDiscreteActionMaskEnv(gym.Env):
 
     def step(self, action):
         #print('in step, heres the actions', action)
+        actions = {}
+        """
+        # If using PI Controller
+        ### PI Controller
+        piCtrl = PIctrl(PIgain = 25,
+                PIint = 900,
+                sampleTime = self.h,
+                deadZone = 0.0,
+                maxCtrlSig = 100,
+                minCtrlSig = 0,
+                CO2Limit = 1200)
+
+        # Execute controller
+        ctrlState = PIctrlState()
+        envSignals = self.env.get_env_signals(self.time)
+        ctrlState.TsetCool = envSignals['T_set_cool']
+        ctrlState.TsetHeat = envSignals['T_set_heat']
+        ctrlState.TinMeas = self.T_in_meas
+        ctrlState.CO2 = self.CO2
+        piCtrl.step(ctrlState) # update ctrlState's heatValve, coolValve, damper, fanSpeed
+        
+         ### If using the PI Controller
+        actions['coolValve'] = ctrlState.heatValve
+        actions['heatValve'] = ctrlState.coolValve
+        actions['damper'] = ctrlState.damper
+        actions['fanSpeed'] = ctrlState.fanSpeed
+
+        ############
+        """
 
         valve = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
         damper = [0.05, 0.2, 0.4, 0.6, 0.8, 1]
         fan = [0.25, 0.5, 0.75, 1]
 
-        actions = {}
+        #### If using the BRAIN
         # Transform the actions. 
         if action[0] < 0:  # Cool down the room
             actions['coolValve'] = -valve[action[0]] * 100
@@ -543,6 +582,7 @@ class MultiDiscreteActionMaskEnv(gym.Env):
     def get_reward(self):
 
         obs_state, h_state = self.get_state()
+
         # Temperature Component
         reward_tg = 0
         if obs_state['grace_left'] <= 0:
@@ -569,7 +609,7 @@ class MultiDiscreteActionMaskEnv(gym.Env):
         heat_valve = obs_state['heat_valve_hist'][-1]
         cool_valve = obs_state['cool_valve_hist'][-1]
         damper = obs_state['damper_hist'][-1]
-        fan = max(heat_valve, cool_valve, damper)
+        fan = obs_state['fan_speed_hist'][-1] #max(heat_valve, cool_valve, damper)
 
         reward_en_heat = coef * heat_valve
         reward_en_cool = coef * cool_valve
@@ -601,5 +641,101 @@ class MultiDiscreteActionMaskEnv(gym.Env):
 
     def finish(self):
         return self.counter == 250
+
+class PIctrlState:
+    def __init__(self):
+        self.heatMode = True
+        self.I = 0
+        self.TinMeas = 0
+        self.TsetHeat = 0
+        self.TsetCool = 0
+        self.heatValve = 0
+        self.coolValve = 0
+        self.damper = 0
+        self.fanSpeed = 0
+        # For debugging
+        self.ctrlError = 0
+
+
+class PIctrl:
+    def __init__(self, PIgain, PIint, sampleTime, deadZone, maxCtrlSig, minCtrlSig, CO2Limit):
+        self.PIgain = PIgain
+        self.PIint = PIint
+        self.sampleTime = sampleTime
+        self.deadZone = deadZone  # Not used!
+        self.maxCtrlSig = maxCtrlSig
+        self.minCtrlSig = minCtrlSig
+        self.CO2Limit = CO2Limit
+
+    def step(self, ctrlState):
+        # Switch heating/cooling mode if necessary
+        if ctrlState.TinMeas <= ctrlState.TsetHeat:
+            if not ctrlState.heatMode:
+                ctrlState.I = 0
+            ctrlState.heatMode = True
+        elif ctrlState.TinMeas >= ctrlState.TsetCool:
+            if ctrlState.heatMode:
+                ctrlState.I = 0
+            ctrlState.heatMode = False
+
+        # Control error based on heating mode
+        if ctrlState.heatMode:
+            ctrlError = ctrlState.TsetHeat - ctrlState.TinMeas
+        else:
+            ctrlError = ctrlState.TinMeas - ctrlState.TsetCool
+
+        # PI algorithm
+        v = self.PIgain * ctrlError + ctrlState.I
+        if (v > self.maxCtrlSig):
+            v = self.maxCtrlSig
+        elif (v < self.minCtrlSig):
+            v = self.minCtrlSig
+        else:
+            ctrlState.I += (self.PIgain * self.sampleTime / self.PIint) * ctrlError
+
+        # Map control signal to valve positions
+        if ctrlState.heatMode:
+            ctrlState.heatValve = v
+            ctrlState.coolValve = 0
+        else:
+            ctrlState.heatValve = 0
+            ctrlState.coolValve = v
+
+        # Damper control based on CO2, p-controller
+        pBand = (self.CO2Limit - 400)  # CO2 interval under limit to apply damper range on
+        minDamperPos = 5  # minimum damper position
+        ctrlState.damper = np.clip(
+            (100 - minDamperPos) / pBand * (ctrlState.CO2 - (self.CO2Limit - pBand)) + minDamperPos,
+            minDamperPos, 100)
+
+        # Fan speed set by max need of damper or heating
+        ctrlState.fanSpeed = max(ctrlState.coolValve,
+                                 ctrlState.heatValve,
+                                 ctrlState.damper)
+
+        # For debugging
+        ctrlState.ctrlError = ctrlError
+
+
+class SignalVectors:
+    def __init__(self, N):
+        self.Tin = np.zeros(N)
+        self.TinMeas = np.zeros(N)
+        self.Twall = np.zeros(N)
+        self.CO2 = np.zeros(N)
+        self.heatValve = np.zeros(N)
+        self.coolValve = np.zeros(N)
+        self.damper = np.zeros(N)
+        self.fanSpeed =np.zeros(N)
+        self.energyHeat = np.zeros(N)
+        self.energyCool = np.zeros(N)
+        self.energyElec = np.zeros(N)
+        # For debugging
+        self.I = np.zeros(N)
+        self.ctrlError = np.zeros(N)
+        self.heatMode = np.zeros(N)
+        self.TsetHeat = np.zeros(N)
+        self.TinMeas = np.zeros(N)
+        self.TsetCool = np.zeros(N)
 
     

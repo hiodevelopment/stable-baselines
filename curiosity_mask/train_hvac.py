@@ -1,5 +1,6 @@
 import os
 import warnings
+import tensorflow as tf
 
 import stable_baselines.common.hvac_action_mask as hvac
 from stable_baselines import PPO2, A2C
@@ -40,13 +41,14 @@ class HVAC_Machine_Teaching(KnowledgeEngine):
         else:
             yield Outdoor_Temperature(level='normal')
 
-        if co2 > 900:
+        if co2 > 900: # 900
             yield CO2(level='high')
         elif co2 < 300:  #300 for first experiment
             yield CO2(level='low')
         elif co2 > 1200:
             yield CO2(level='non-compliant')
 
+        # Set all actions to valid.
         valid_actions1 = [1] * 21
         valid_actions2 = []
 
@@ -62,65 +64,90 @@ class HVAC_Machine_Teaching(KnowledgeEngine):
             valid_actions3.append(tmp)
 
         self.valid_actions = [valid_actions1, valid_actions2, valid_actions3]
+        self.mask_width = 1
     
 
     # Heuristic Machine Teaching Strategies
-    @Rule(Occupancy(level=L('low')) & CO2(level=L('low')) | Outdoor_Temperature(level='extreme'))
-    def recycle_air(self):
+    @Rule(CO2(level=L('low')) | (Occupancy(level=L('low')) | (CO2(level=L('high')) & (Occupancy(level=L('low')))) )) # | Outdoor_Temperature(level='extreme')
+    # Original: @Rule(Occupancy(level=L('low')) & CO2(level=L('low')) | Outdoor_Temperature(level='extreme'))
+    def recycle_air(self):  # If temperature is extreme or air quality is good, recycle as much air as possible. 
         
         # Close the Damper
-        valid_actions1 = [1] * 21
-        valid_actions2 = []
+        valid_actions2 = self.valid_actions[1]
+        valid_actions3 = self.valid_actions[2]
 
-        #for action in valid_actions1:
-        for index, value in enumerate(valid_actions1):
-            if index > 1:
-                valid_actions2.append([0] * 6)
-            if index <= 1:
-                valid_actions2.append([1] * 6)
+        for valve in valid_actions2:
+            for index, damper in enumerate(valve):
+                if damper < 0.2*self.mask_width: # index < 2
+                    valve[index] = 1
+                else:
+                    valve[index] = 0
+        """
+        # Slow down the fan
+        for valve in valid_actions3: 
+            for damper in valve:
+                for index, fan_speed in enumerate(damper):
+                    if index < 1:     # Blow the fan to freshen the air
+                        damper[index] = 1
+                    else:
+                        damper[index] = 0
+        """
+        return self.valid_actions
 
-        valid_actions3 = []
-
-        for i in range(21):
-            tmp = [] 
-            for j in range(6):
-                tmp.append([1] * 4)
-            valid_actions3.append(tmp)
-
-        valid_actions = [valid_actions1, valid_actions2, valid_actions3]
-        
-        self.valid_actions = valid_actions
-
-        return valid_actions
-
-    @Rule(Occupancy(level=L('high')) | CO2(level=L('high') | CO2(level=L('non-compliant')) | Outdoor_Temperature(level='normal')))
+    @Rule(Occupancy(level=L('high')) & CO2(level=L('high')))
     def freshen_air(self):
         
         # Open the Damper
-        valid_actions1 = [1] * 21
-        valid_actions2 = []
+        valid_actions2 = self.valid_actions[1]
 
-        #for action in valid_actions1:
-        for index, value in enumerate(valid_actions1):
-            if (index < 2 or index == 5):
-                valid_actions2.append([0] * 6)
-            else:
-                valid_actions2.append([1] * 6)
+        for valve in valid_actions2:
+            for index, damper in enumerate(valve):
+                if index > 2: 
+                    valve[index] = 1
+                else:
+                    valve[index] = 0
 
-        valid_actions3 = []
+        return self.valid_actions
 
-        for i in range(21):
-            tmp = [] 
-            for j in range(6):
-                tmp.append([1] * 4)
-            valid_actions3.append(tmp)
+    @Rule(CO2(level=L('non-compliant')))
+    def freshen_air_quickly(self):
+        
+        # Open the Damper
+        valid_actions2 = self.valid_actions[1]
+        valid_actions3 = self.valid_actions[2]
 
-        valid_actions = [valid_actions1, valid_actions2, valid_actions3]
-        #print('found a rule', valid_actions)
+        for valve in valid_actions2:
+            for index, damper in enumerate(valve):
+                if index == 5:  # CO2 is critical, open all the way
+                    valve[index] = 1
+                else:
+                    valve[index] = 0
+        """
+        # Circulate the fresh air
+        for valve in valid_actions3: 
+            for damper in valve:
+                for index, fan_speed in enumerate(damper):
+                    if index > 1:     # Blow the fan to freshen the air
+                        damper[index] = 1
+                    else:
+                        damper[index] = 0
+        """
 
-        self.valid_actions = valid_actions
+        return self.valid_actions
 
-        return valid_actions
+        @Rule(Outdoor_Temperature(level='normal'))
+        def limit_heating_and_cooling (self):
+            
+            # Open the Damper
+            valid_actions1 = self.valid_actions[0]
+
+            for index, valve in enumerate(valid_actions1):
+                if abs(valve) < 0.2*self.mask_width:   # 0.3
+                    valid_actions1[index] = 1
+                else:
+                    valid_actions1[index] = 0
+
+            return self.valid_actions
 
 class ActionMaskCallback(BaseCallback):
     """
@@ -140,8 +167,8 @@ class ActionMaskCallback(BaseCallback):
         # self.n_calls = 0  # type: int
         self.num_timesteps = 0  # type: int
         # local and global variables
-        # self.locals = None  # type: Dict[str, Any]
-        # self.globals = None  # type: Dict[str, Any]
+        self.locals = None  # type: Dict[str, Any]
+        self.globals = None  # type: Dict[str, Any]
         # The logger object, used to report things in the terminal
         # self.logger = None  # type: logger.Logger
         # # Sometimes, for event callback, it is useful
@@ -186,11 +213,30 @@ class ActionMaskCallback(BaseCallback):
         :return: (bool) If the callback returns False, training is aborted early.
         """
         
-        #if self.verbose > 0:
-            #print("Num timesteps: {}".format(self.num_timesteps))
+        reward = self.training_env.env_method('get_reward')[0]
+        if reward > 60: # 60
+            self.engine.mask_width = 2
+        elif reward > 62: # 70
+            self.engine.mask_width = 3
+        elif reward > 65:
+            self.engine.mask_width = 4
+         
 
         self.engine.run()
-        infos = self.training_env.set_attr('valid_actions', self.engine.valid_actions)
+        self.model.policy.set_action_mask(self.model.policy, self.engine.valid_actions) # Set Action Mask
+
+        sim = self.training_env.env_method('get_state')
+        o = sim[0][0]
+        h = sim[0][1]
+
+        # Log scalar value to Tensorboard
+        co2 = o['CO2']
+        energy = h['energy_elec']
+        comfort = h['error_T_real']
+        summary = tf.Summary(value=[tf.Summary.Value(tag='air_quality', simple_value=co2), tf.Summary.Value(tag='energy', simple_value=energy), tf.Summary.Value(tag='comfort', simple_value=comfort)])
+        #summary2 = tf.Summary(value=[tf.Summary.Value(tag='energy', simple_value=energy)])
+        #summary3 = tf.Summary(value=[tf.Summary.Value(tag='comfort', simple_value=comfort)])
+        self.locals['writer'].add_summary(summary, self.num_timesteps)
         
         return True
 
@@ -208,9 +254,9 @@ class ActionMaskCallback(BaseCallback):
 
 callback = ActionMaskCallback()
 
-model = PPO2(MlpPolicy, env, verbose=2, tensorboard_log="experiment/", nminibatches=1)  
+model = PPO2(MlpPolicy, env, verbose=2, tensorboard_log="experiment/", nminibatches=1)  # tensorboard_log="experiment/", 
 #model = A2C(MlpPolicy, env, verbose=2)
-model.learn(1000000, callback=callback)
+model.learn(250000, callback=callback)
 
 # model.save("expert_model")
 
