@@ -64,6 +64,25 @@ class MultiDiscreteActionMaskEnv(gym.Env):
                                 [1, 1, 1, 1]]]
         self.valid_actions = [self.valid_actions1, self.valid_actions2, self.valid_actions3]
 
+    def generate_mask(a,b,c,d):
+
+        action_mask = []
+
+        # Two elements
+        action_mask1 = [1 for x in range(a)]
+
+        # Two lists of 3 elements each. 
+        action_mask2 = [[1]*b for x in range(a)]
+
+        #Two lists with 3  lists with 4 elements each.
+        action_mask3 = [[[1]*c for y in range(b)] for x in range(a)]
+
+        #Two lists, with 3 lists, with 4 lists with 5 elements each
+        action_mask4 = [[[1]*d for z in range(c)]for y in range(b) for x in range(a)]
+        
+        return [action_mask1, action_mask2, action_mask3, action_mask4]
+
+
     def reset(self):
         self.counter = 0
         self.valid_actions1 = [1, 1]

@@ -166,6 +166,7 @@ class BasePolicy(ABC):
         :param action_mask: the action mask to set. Must be of shape stack(self.action_mask_phs)
         :return: None
         """
+        #print('in policies:', tf.convert_to_tensor(np.expand_dims(action_mask[3], 0)).get_shape().as_list())  # Check tensor shape
         self.action_mask = action_mask
 
     @property
