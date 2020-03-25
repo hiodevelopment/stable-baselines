@@ -184,7 +184,7 @@ class BipedalWalker(gym.Env, EzPickle):
         return [seed]
 
     def get_state(self):
-        return {'state': self.state, 'action': self.action}
+        return {'state': self.state, 'action': self.action, 'legs': self.legs}
 
     def _destroy(self):
         if not self.terrain: return
@@ -441,6 +441,43 @@ class BipedalWalker(gym.Env, EzPickle):
 
         return self.step(np.array([0,0,0,0]))[0]
 
+    def simulate(self, a, b, c, d):
+
+        action = [a, b, c, d]
+
+        control_speed = False  # Should be easier as well
+        if control_speed:
+            self.joints[0].motorSpeed = float(SPEED_HIP  * np.clip(action[0], -1, 1))
+            self.joints[1].motorSpeed = float(SPEED_KNEE * np.clip(action[1], -1, 1))
+            self.joints[2].motorSpeed = float(SPEED_HIP  * np.clip(action[2], -1, 1))
+            self.joints[3].motorSpeed = float(SPEED_KNEE * np.clip(action[3], -1, 1))
+        else:
+            self.joints[0].motorSpeed     = float(SPEED_HIP     * np.sign(action[0]))
+            self.joints[0].maxMotorTorque = float(MOTORS_TORQUE * np.clip(np.abs(action[0]), 0, 1))
+            self.joints[1].motorSpeed     = float(SPEED_KNEE    * np.sign(action[1]))
+            self.joints[1].maxMotorTorque = float(MOTORS_TORQUE * np.clip(np.abs(action[1]), 0, 1))
+            self.joints[2].motorSpeed     = float(SPEED_HIP     * np.sign(action[2]))
+            self.joints[2].maxMotorTorque = float(MOTORS_TORQUE * np.clip(np.abs(action[2]), 0, 1))
+            self.joints[3].motorSpeed     = float(SPEED_KNEE    * np.sign(action[3]))
+            self.joints[3].maxMotorTorque = float(MOTORS_TORQUE * np.clip(np.abs(action[3]), 0, 1))
+
+        self.world.Step(1.0/FPS, 6*30, 2*30)
+
+        pos = self.hull.position
+        vel = self.hull.linearVelocity
+
+        state = {
+            'hull': self.hull.angle,        # Normal angles up to 0.5 here, but sure more is possible.
+            'left_hip_angle': self.joints[0].angle,   # This will give 1.1 on high up, but it's still OK (and there should be spikes on hiting the ground, that's normal too)
+            'left_knee_angle': self.joints[1].angle + 1.0,
+            'left_leg_contact': 1.0 if self.legs[1].ground_contact else 0.0,
+            'right_hip_angle': self.joints[2].angle,
+            'right_knee_angle': self.joints[3].angle + 1.0,
+            'right_leg_contact': 1.0 if self.legs[3].ground_contact else 0.0
+        }
+
+        return state
+    
     def step(self, masked_action):
         #self.hull.ApplyForceToCenter((0, 20), True) -- Uncomment this to receive a bit of stability help
 
