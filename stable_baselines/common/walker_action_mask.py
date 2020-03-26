@@ -142,6 +142,7 @@ class BipedalWalker(gym.Env, EzPickle):
                     categoryBits=0x0001,
                 )
 
+        self.valid_actions = []
         self.reset()
 
         high = np.array([np.inf] * 24)
@@ -154,29 +155,6 @@ class BipedalWalker(gym.Env, EzPickle):
         #self.observation_space = gym.spaces.Box(low=-high, high=high, shape=self.observation_shape, dtype=np.float32)
 
         self.counter = 0
-        def generate_mask(a,b,c,d):
-
-            action_mask = []
-
-            # Two elements
-            action_mask1 = [1 for x in range(a)]
-
-            # Two lists of 3 elements each. 
-            action_mask2 = [[1]*b for x in range(a)]
-
-            #Two lists with 3  lists with 4 elements each.
-            action_mask3 = [[[1]*c for y in range(b)] for x in range(a)]
-
-            #Two lists, with 3 lists, with 4 lists with 5 elements each
-            action_mask4 = [[[[1]*d for z in range(c)]for y in range(b)] for x in range(a)]
-            
-            return [action_mask1, action_mask2, action_mask3, action_mask4]
-
-        self.valid_actions = generate_mask(21,21,21,21)
-        self.mask_left_hip = self.valid_actions[0]
-        self.mask_left_knee = self.valid_actions[1]
-        self.mask_right_hip = self.valid_actions[2]
-        self.mask_right_knee = self.valid_actions[3]
         #print('env init', len(self.valid_actions[0]), len(self.valid_actions[1]), len(self.valid_actions[2]), len(self.valid_actions[3]))
 
     def seed(self, seed=None):
@@ -185,6 +163,9 @@ class BipedalWalker(gym.Env, EzPickle):
 
     def get_state(self):
         return {'state': self.state, 'action': self.action, 'legs': self.legs}
+
+    def set_infos(self, infos):
+        self.valid_actions = infos
 
     def _destroy(self):
         if not self.terrain: return
@@ -403,29 +384,6 @@ class BipedalWalker(gym.Env, EzPickle):
         self.drawlist = self.terrain + self.legs + [self.hull]
 
         self.counter = 0
-        def generate_mask(a,b,c,d):
-
-            action_mask = []
-
-            # Two elements
-            action_mask1 = [1 for x in range(a)]
-
-            # Two lists of 3 elements each. 
-            action_mask2 = [[1]*b for x in range(a)]
-
-            #Two lists with 3  lists with 4 elements each.
-            action_mask3 = [[[1]*c for y in range(b)] for x in range(a)]
-
-            #Two lists, with 3 lists, with 4 lists with 5 elements each
-            action_mask4 = [[[[1]*d for z in range(c)]for y in range(b)] for x in range(a)]
-            
-            return [action_mask1, action_mask2, action_mask3, action_mask4]
-
-        self.valid_actions = generate_mask(21,21,21,21)
-        self.mask_left_hip = self.valid_actions[0]
-        self.mask_left_knee = self.valid_actions[1]
-        self.mask_right_hip = self.valid_actions[2]
-        self.mask_right_knee = self.valid_actions[3]
 
         class LidarCallback(Box2D.b2.rayCastCallback):
             def ReportFixture(self, fixture, point, normal, fraction):
@@ -438,7 +396,7 @@ class BipedalWalker(gym.Env, EzPickle):
 
         self.actions = {}
         self.state = {}
-
+        print('env reset')
         return self.step(np.array([0,0,0,0]))[0]
 
     def simulate(self, a, b, c, d):
@@ -481,7 +439,7 @@ class BipedalWalker(gym.Env, EzPickle):
     def step(self, masked_action):
         #self.hull.ApplyForceToCenter((0, 20), True) -- Uncomment this to receive a bit of stability help
 
-        #print('in step')
+        print('in step', masked_action)
 
         left_hip = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
         left_knee = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
@@ -568,7 +526,9 @@ class BipedalWalker(gym.Env, EzPickle):
         self.state = state
         self.render()
         self.counter += 1
+        #print('set action mask in env')
         return np.array(state), reward, done, {'action_mask': self.valid_actions}
+        #return np.array(state), reward, done, {}
 
     def render(self, mode='human'):
         from gym.envs.classic_control import rendering

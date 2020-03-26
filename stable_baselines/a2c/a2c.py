@@ -358,18 +358,25 @@ class A2CRunner(AbstractEnvRunner):
             # Clip the actions to avoid out of bound error
             if isinstance(self.env.action_space, gym.spaces.Box):
                 clipped_actions = np.clip(actions, self.env.action_space.low, self.env.action_space.high)
-            obs, rewards, dones, infos = self.env.step(clipped_actions)
-
+        
             self.model.num_timesteps += self.n_envs
-
+            
+            # Moved mask clear before callback so that mask can be set from callback. 
+            self.action_masks.clear()
             if self.callback is not None:
+                # Get action mask from callback
+                if self.callback.on_step() is True and self.callback.action_mask is not None:
+                    self.action_masks.append(self.callback.action_mask)
+                    #print('in a2c', self.callback.action_mask)
                 # Abort training early
                 if self.callback.on_step() is False:
                     self.continue_training = False
                     # Return dummy values
                     return [None] * 8
 
-            self.action_masks.clear()
+            # Moved callback ahead of this so that action mask can be set before the environment is stepped. 
+            obs, rewards, dones, infos = self.env.step(clipped_actions)
+            
             for info in infos:
                 maybe_ep_info = info.get('episode')
                 if maybe_ep_info is not None:
