@@ -396,7 +396,7 @@ class BipedalWalker(gym.Env, EzPickle):
 
         self.actions = {}
         self.state = {}
-        print('env reset')
+        #print('env reset')
         return self.step(np.array([0,0,0,0]))[0]
 
     def simulate(self, a, b, c, d):
@@ -434,12 +434,12 @@ class BipedalWalker(gym.Env, EzPickle):
             'right_leg_contact': 1.0 if self.legs[3].ground_contact else 0.0
         }
 
-        return state
+        return state['right_leg_contact'] #state
     
     def step(self, masked_action):
         #self.hull.ApplyForceToCenter((0, 20), True) -- Uncomment this to receive a bit of stability help
 
-        print('in step', masked_action)
+        #print('in step', masked_action)
 
         left_hip = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
         left_knee = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
@@ -520,7 +520,7 @@ class BipedalWalker(gym.Env, EzPickle):
             done   = True
         if pos[0] > (TERRAIN_LENGTH-TERRAIN_GRASS)*TERRAIN_STEP:
             done   = True
-        if self.counter > 300:
+        if self.counter > 50:
             done = True
 
         self.state = state
