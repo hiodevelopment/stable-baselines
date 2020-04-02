@@ -149,7 +149,7 @@ class BipedalWalker(gym.Env, EzPickle):
         #self.action_space = spaces.Box(np.array([-1, -1, -1, -1]), np.array([1, 1, 1, 1]), dtype=np.float32)
         self.observation_space = gym.spaces.Box(-high, high, dtype=np.float32)
 
-        self.action_space = MultiDiscrete([21, 21, 21, 21])
+        self.action_space = MultiDiscrete([3, 21, 21, 21, 21])
 
         #self.observation_shape = (24,)
         #self.observation_space = gym.spaces.Box(low=-high, high=high, shape=self.observation_shape, dtype=np.float32)
@@ -439,7 +439,7 @@ class BipedalWalker(gym.Env, EzPickle):
     def step(self, masked_action):
         #self.hull.ApplyForceToCenter((0, 20), True) -- Uncomment this to receive a bit of stability help
 
-        #print('in step', masked_action)
+        print('in step', masked_action)
 
         left_hip = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
         left_knee = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
@@ -447,7 +447,6 @@ class BipedalWalker(gym.Env, EzPickle):
         right_knee = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
         
         action = [left_hip[masked_action[0]], left_knee[masked_action[1]], right_hip[masked_action[2]], right_knee[masked_action[3]]]
-
         #print('in step, action:', action)
 
         self.action = action
@@ -615,8 +614,8 @@ if __name__=="__main__":
 
         contact0 = s[8]
         contact1 = s[13]
-        moving_s_base = 4 + 5*moving_leg
-        supporting_s_base = 4 + 5*supporting_leg
+        moving_s_base = 4 + 5*moving_leg # 
+        supporting_s_base = 4 + 5*supporting_leg # This is 9 when supporting leg = 1, 4 when supporting leg = 0. Hip angle that matches supporting leg. 
 
         hip_targ  = [None,None]   # -0.8 .. +1.1
         knee_targ = [None,None]   # -0.6 .. +0.9
@@ -624,8 +623,8 @@ if __name__=="__main__":
         knee_todo = [0.0, 0.0]
 
         if state==STAY_ON_ONE_LEG:
-            hip_targ[moving_leg]  = 1.1
-            knee_targ[moving_leg] = -0.6
+            hip_targ[moving_leg]  = 1.1  # Positive hip motion for swinging leg.
+            knee_targ[moving_leg] = -0.6  # Negative knee motion for swinging leg.
             supporting_knee_angle += 0.03
             if s[2] > SPEED: supporting_knee_angle += 0.03
             supporting_knee_angle = min( supporting_knee_angle, SUPPORT_KNEE_ANGLE )
@@ -636,7 +635,7 @@ if __name__=="__main__":
             hip_targ[moving_leg]  = +0.1
             knee_targ[moving_leg] = SUPPORT_KNEE_ANGLE
             knee_targ[supporting_leg] = supporting_knee_angle
-            if s[moving_s_base+4]:
+            if s[moving_s_base+4]: # If the moving leg is ... down in contact with the ground?
                 state = PUSH_OFF
                 supporting_knee_angle = min( s[moving_s_base+2], SUPPORT_KNEE_ANGLE )
         if state==PUSH_OFF:

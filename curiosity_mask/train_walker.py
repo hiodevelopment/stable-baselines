@@ -4,11 +4,13 @@ import warnings
 import numpy as np
 import tensorflow as tf
 
+from gym.spaces import MultiDiscrete
 import stable_baselines.common.walker_action_mask as walker
 from stable_baselines import PPO2, A2C
 from stable_baselines.common.policies import MlpPolicy
 from stable_baselines.common.vec_env import DummyVecEnv
 from stable_baselines.common.callbacks import BaseCallback
+from curiosity_mask.util import create_dummy_action_mask as mask
 
 from experta import *
 from experta.fact import *
@@ -19,154 +21,169 @@ env = DummyVecEnv([walker.BipedalWalker])
 class Leg(Fact):
     side = Field(schema.Or("left", "right"), mandatory=True)
     position = Field(float)
+    knee = Field(float)  # Angle, Action Mask
+    hip = Field(float)  # Angle, Action Mask
     orientation = Field(schema.Or("leading", "trailing"))
-    contact = Field(schema.Or("1.0", "0.0", "blank"))
+    contact = Field(bool)
     function = Field(schema.Or("planted", "swinging", "lifting"))
+    gait = Field(schema.Or(1, 2, 3), mandatory=True)
+    pass
+
+class Orchestration(Fact):
+    condition = Field(schema.Or("deterministic", "fuzzy"), default='deterministic', mandatory=True)
+    event = Field(schema.Or("selection", "blank"))
+    gait = Field(schema.Or(1, 2, 3), mandatory=True, default=1)
     pass
 
 class Machine_Teaching(KnowledgeEngine):
 
     @DefFacts()
-    def enivronment_definitions(self, left_position, left_contact, right_position, right_contact):
-        print('defining initial facts')
-        yield Leg(side='left', position=left_position, contact=str(left_contact))
-        yield Leg(side='right', position=right_position, contact=str(right_contact))
+    def enivronment_definitions(self, left_position, left_contact, right_position, right_contact, left_hip_angle, left_knee_angle, right_hip_angle, right_knee_angle):
+        #Sprint('defining initial facts')
+        yield Leg(side='left', gait=1, position=left_position, contact=bool(left_contact), hip=left_hip_angle, knee=left_knee_angle)
+        yield Leg(side='right', gait=1, position=right_position, contact=bool(right_contact), hip=right_hip_angle, knee=left_knee_angle)
+        yield Orchestration(gait=1, event='blank', condition='deterministic')
         pass
-            
+    
     ##### Heuristic Machine Teaching Strategies
-    # The leg that is further ahead is leading.
     @Rule(AS.leg <<
         Leg(side=L('left'), position=MATCH.p1),
         Leg(side=L('right'), position=MATCH.p2,),
         TEST(lambda p1, p2: p1 if (p1>p2) else p2)
         )
-    #@Rule(AS.leg << Leg(side=L('left')))
-    def determine_leading_leg(self, leg, p1, p2):
+    def determine_leading_leg(self, leg, p1, p2):   # The leg that is further ahead is leading.
         self.duplicate(leg, orientation='leading')
         #print('leading leg set: ', leg['side'], leg['position'], p1, p2)
         pass
     
-    # The leg that is further behind is trailing.
+    
     @Rule(AS.leg << 
         Leg(side=L('right'), position=MATCH.p1),
         Leg(side=L('left'), position=MATCH.p2,),
         TEST(lambda p1, p2: p1 if (p1>p2) else p2)
         )
-    #@Rule(AS.leg << Leg(side=L('right')))
-    def determine_trailing_leg(self, leg, p1, p2):
+    def determine_trailing_leg(self, leg, p1, p2):   # The leg that is further behind is trailing.
         self.duplicate(leg, orientation='trailing')
         #print('trailing leg set: ', leg['side'], leg['position'], p1, p2)
         pass
 
-    # Lift leading leg (more than swinging) when both feet are on the ground.. 
-    @Rule(AS.leg << Leg(orientation=L('leading')) & Leg(contact=L('1.0')))
-    def define_lifting(self, leg):
-        self.duplicate(leg, function='lifting')
-        #print('lifting leg set: ', leg['side'], leg['position'], leg['orientation'])
+     
+    @Rule(AS.planted_leg << Leg(orientation=L('trailing')), AS.swinging_leg << Leg(orientation=L('leading')))
+    def define_planted_vs_swinging(self, planted_leg, swinging_leg):    # Planted leg is [set conditions based on heuristic].
+        self.duplicate(planted_leg, function='planted')
+        self.duplicate(swinging_leg, function='swinging')
+        #print('planted leg set: ', planted_leg['side'], planted_leg['position'], planted_leg['orientation'])
+        #print('swinging leg set: ', swinging_leg['side'], swinging_leg['position'], swinging_leg['orientation'])
         pass
-    """
-    # Swinging leg is leading and not touching the ground. 
-    @Rule(AS.leg << Leg(orientation=L('leading')) & Leg(contact=L('0.0')))
-    def define_swinging(self, leg):
-        self.duplicate(leg, function='swinging')
-        #print('swinging leg set: ', leg['side'], leg['position'], leg['orientation'])
-        pass
-    """
-    # Planted leg is trailing and in contact with the ground. , contact=1.0
-    @Rule(AS.leg << Leg(orientation=L('trailing')))
-    def define_planted(self, leg):
-        self.duplicate(leg, function='planted')
-        #print('planted leg set: ', leg['side'], leg['position'], leg['orientation'])
-        pass
+    
 
-    # Plant right leg, lift left leg.
-    @Rule(Leg(function='planted', side='right') & Leg(function='lifting', side='left'))
-    def left_plant_right_lift(self):
-        """
-        Right leg planted, left leg lifting. 
-        """
-        # act on mask
-        a = b = c = d = 21
-        self.mask_right_hip = [[[1 if action_index > 10 else 0 for action_index in range(c)] for y in range(b)] for x in range(a)]
-        self.valid_actions[2] = self.mask_right_hip
-
-        self.mask_left_hip = [1 if action_index <= 6 else 0 for action_index in range(a)] # Equivalent of lift leg higher (than swinging)
-        self.valid_actions[0] = self.mask_left_hip
+    ###### Concept: Gait Phase 1 ##### 
+    @Rule(Orchestration(gait=L(1)) & NOT(Orchestration(event=L('selection'))), AS.swinging_leg << Leg(function=L('swinging')),
+            AS.planted_leg << Leg(gait=L(1)) & Leg(function=L('planted'), side=MATCH.side), salience=1)  # Not fuzzy.
+    def gait_phase_1(self, swinging_leg, planted_leg):  # Deterministic Phase 1.
+        # Each concept rule needs to mask the gait and flip bits for control concept.
+        self.valid_actions[0] = [1, 0, 0]  # gait phase 1
+        # Flip bits for joint modifications. (Left Hip, Left Knee, Right Hip, Right Knee)
         
-        print('left leg planted, right leg lifting')
-        return self.valid_actions
+        # action_space[0] is the gait
+        # action_space[1] is joint 1 for each gait
+        # action_space[2] is joint 2 for each gait, then for each possible value of joint 1
+        # action_space[3] is joint 3 for each gait, then then for each possible value of joint 1, then for joint 2
+        # action_space[4] is joint 4 for each gait, then then for each possible value of joint 1, then for joint 2, then for joint 3
+        gait = 1
 
-    @Rule(Leg(function='planted', side='left'))
-    def planted_leg(self):
-        """
-        Modify the mask for the planted leg.  Hip rotates forward.  Left hip action mask. 
-        """
-        # act on mask
-        a = b = c = d = 21
-        self.mask_left_hip = [1 if action_index > 10 else 0 for action_index in range(a)]
-        self.valid_actions[0] = self.mask_left_hip
-        print('planted left rule')
-        return self.valid_actions
+        #if hip_targ[0]: hip_todo[0] = 0.9*(hip_targ[0] - s[4]) - 0.25*s[5]
+        #if hip_targ[1]: hip_todo[1] = 0.9*(hip_targ[1] - s[9]) - 0.25*s[10]
+        #if knee_targ[0]: knee_todo[0] = 4.0*(knee_targ[0] - s[6])  - 0.25*s[7]
+        #if knee_targ[1]: knee_todo[1] = 4.0*(knee_targ[1] - s[11]) - 0.25*s[12]
 
-    @Rule(Leg(function='planted', side='right'))
-    def planted_leg(self):
-        """
-        Modify the mask for the planted leg.  Hip rotates forward.  Right hip action mask. 
-        """
-        # act on mask
-        a = b = c = d = 21
-        self.mask_right_hip = [[[1 if action_index > 10 else 0 for action_index in range(c)] for y in range(b)] for x in range(a)]
-        self.valid_actions[2] = self.mask_right_hip
-        print('planted right rule')
-        return self.valid_actions
+        if swinging_leg['side'] == 'left':
+            self.mask_left_hip = self.valid_actions[1][gait] = [1 if action_index >= 10 else 0 for action_index in range(21)] # Positive hip motion for swinging leg.
+            for joint1_value in range(20):
+                self.mask_left_knee = self.valid_actions[2][gait][joint1_value] = [1 if action_index < 9 else 0 for action_index in range(21)] # Negative knee motion for swinging leg.
+        elif swinging_leg['side'] == 'right':
+            for joint1_value in range(20):
+                for joint2_value in range(20):
+                    self.mask_right_hip = self.valid_actions[3][gait][joint1_value][joint2_value] = [1 if action_index >= 10 else 0 for action_index in range(21)] # Positive hip motion for swinging leg.
+            for joint1_value in range(20):
+                for joint2_value in range(20):
+                    for joint3_value in range(20):
+                        self.mask_right_knee = self.valid_actions[4][gait][joint1_value][joint2_value][joint3_value] = [1 if action_index < 9 else 0 for action_index in range(21)] # Negative knee motion for swinging leg.
+        #print('Concept 1 Activated')
+        pass
+    
+    ####### Transtion: Gait Phase 1 -> 2, If planted leg is behind -> put swinging leg down: plant swinging leg
+    @Rule(Leg(gait=L(1)) & Leg(function=L('planted')) & Leg(orientation=L('trailing')))
+    def define_swinging(self):
+        orchestration = self.declare(Orchestration(gait=1, event='selection', condition='fuzzy'))
+        print('Fuzzy condition between gait phase 1 and 2: ', orchestration['event'])
+        pass
 
-    @Rule(Leg(function='swinging', side='left'))
-    def swinging_leg(self):
-        """
-        Modify the mask for the swinging leg.  Hip rotates backward. For now, raise.  Left hip action mask.
-        """
-        # act on mask
-        a = b = c = d = 21
-        self.mask_left_hip = [1 if action_index <= 10 else 0 for action_index in range(a)]
-        self.valid_actions[0] = self.mask_left_hip
+    @Rule(AS.orchestration << Orchestration(gait=L(1)) & Orchestration(event=L('selection')) & Orchestration(condition=L('fuzzy')), salience=1)   # Fuzzy, gait choice only. Let it learn what to do in transition. 
+    def transition_phase_2(self, orchestration):
+        # Each concept rule needs to mask the gait and flip bits for control concept.
+        self.valid_actions[0] = [1, 1, 0]  # gait phase 1 or gait phase 2
+        self.retract(orchestration)
+        print('Gait Transition -> Phase 2')
+        pass
 
-        return self.valid_actions
+    ###### Concept: Gait Phase 2 #####  
+    @Rule(Orchestration(gait=L(2)) & NOT(Orchestration(event=L('selection'))), AS.swinging_leg << Leg(gait=L(2)) & Leg(function=L('swinging')),
+            AS.planted_leg << Leg(gait=L(2)) & Leg(function=L('planted'), side=MATCH.side), salience=0)  # Not fuzzy.
+    def gait_phase_2(self, swinging_leg, planted_leg):  # Deterministic Phase 1.
+        # Each concept rule needs to mask the gait and flip bits for control concept.
+        self.valid_actions[0] = [1, 0, 0]  # gait phase 1
+        # Flip bits for joint modifications. (Left Hip, Left Knee, Right Hip, Right Knee) 
 
-    @Rule(Leg(function='swinging', side='right'))
-    def swinging_leg(self):
-        """
-        Modify the mask for the swinging leg.  Hip rotates backward. For now, raise.  Right hip action mask.
-        """
-        # act on mask
-        a = b = c = d = 21
-        self.mask_right_hip = [[[1 if action_index <= 10 else 0 for action_index in range(c)] for y in range(b)] for x in range(a)]
-        self.valid_actions[2] = self.mask_right_hip
+        if swinging_leg[side] == 'left':
+            for mask in range(20):
+                self.valid_actions[4][mask][0][0][0] = [1 if action_index >= 10 else 0 for action_index in range(21)] # Negative hip motion for swinging leg.
+            for mask in range(20):
+                self.valid_actions[4][0][0][mask][0] = [1 if action_index < 9 else 0 for action_index in range(21)] # Positive knee motion for swinging leg.
+        elif swinging_leg[side] == 'right':
+            for mask in range(20):
+                self.valid_actions[4][0][mask][0][0] = [1 if action_index < 9 else 0 for action_index in range(21)] # Negative hip motion for swinging leg.
+            for mask in range(20):
+                self.valid_actions[4][0][0][0][mask] = [1 if action_index >= 10 else 0 for action_index in range(21)] # Positive knee motion for swinging leg.
+        pass
 
-        return self.valid_actions
+    
+    ##### Transition: Gait Phase 2 -> 3: Push off planted leg, if swinging leg makes contact with the ground.
+    @Rule(Leg(gait=L(2)) & Leg(function=L('swinging')) & Leg(contact=L(True)))
+    def define_swinging(self):
+        orchestration = self.declare(Orchestration(gait=2, event='selection', condition='fuzzy'))
+        print('Fuzzy condition between gait phase 2 and 3: ', orchestration['event'])
+        pass
+ 
+    @Rule(AS.swinging_leg << Leg(gait=L(2)) & Leg(function=L('swinging')) & Leg(contact=L(True)),
+            AS.planted_leg << Leg(gait=L(2)) & Leg(function=L('planted')), salience=1)
+    def transition_phase_3(self, swinging_leg, planted_leg):
+        # Each concept rule needs to mask the gait and flip bits for control concept.
+        self.valid_actions[0] = [0, 1, 1]  # gait phase 2 or 3
+        self.modify (swinging_leg, function='planted', gait='3') # Remember to check for modify effects. 
+        self.modify (planted_leg, function='swinging', gait='3')
+        print('Gait Transition -> Phase 3')
+        pass
 
-    @Rule(Leg(function='lifting', side='left'))
-    def lifting_leg(self):
-        """
-        Modify the mask for the lifting leg.  Hip rotates backward. For now, raise.  Left hip action mask.
-        """
-        # act on mask
-        a = b = c = d = 21
-        self.mask_left_hip = [1 if action_index <= 6 else 0 for action_index in range(a)] # Equivalent of lift leg higher (than swinging)
-        self.valid_actions[0] = self.mask_left_hip
-        print('lifting left rule')
-        return self.valid_actions
+    ###### Concept: Gait Phase 3 #####  
+    @Rule(Orchestration(gait=L(3)) & NOT(Orchestration(event=L('selection'))), AS.swinging_leg << Leg(gait=L(3)) & Leg(function=L('swinging')),
+            AS.planted_leg << Leg(gait=L(3)) & Leg(function=L('planted'), side=MATCH.side), salience=0)  # Not fuzzy.
+    def gait_phase_3(self, swinging_leg, planted_leg):  # Deterministic Phase 3.
+        # Each concept rule needs to mask the gait and flip bits for control concept.
+        self.valid_actions[0] = [0, 0, 1]  # gait phase 3
+        # Flip bits for joint modifications. (Left Hip, Left Knee, Right Hip, Right Knee) 
+        pass 
 
-    @Rule(Leg(function='lifting', side='right'))
-    def lifting_leg(self):
-        """
-        Modify the mask for the planted leg.  Hip rotates backward. For now, raise.  Right hip action mask.
-        """
-        # act on mask
-        a = b = c = d = 21
-        self.mask_right_hip = [[[1 if action_index <= 6 else 0 for action_index in range(c)] for y in range(b)] for x in range(a)] # Equivalent of lift leg higher (than swinging)
-        self.valid_actions[2] = self.mask_right_hip
-        print('lifting right rule')
-        return self.valid_actions
+    ##### Transition: Gait Phase 3 -> 1: Push Off.
+    # Heurisitc: This heuristic is related to the size of the supporting base and the x velocity in relation to the speed the gait is validated for.
+    @Rule(AS.orchestration << Orchestration(event=L('selection')),
+            AS.left_leg << Leg(gait=L(3)) & Leg(side=L('left')), AS.right_leg << Leg(gait=L(3)) & Leg(side=L('right')), salience=1)
+    def transition_phase_1(self, orchestration):
+        #Each concept rule needs to mask the gait and flip bits for control concept.
+        self.valid_actions[0] = [1, 0, 1]  # gait phase 1 or 3
+        self.retract(orchestration)
+        print('Gait Transition -> Phase 1')
+        pass
 
 class ActionMaskCallback(BaseCallback):
     """
@@ -174,50 +191,6 @@ class ActionMaskCallback(BaseCallback):
 
     :param verbose: (int) Verbosity level 0: not output 1: info 2: debug
     """
-    def reset_mask(self):
-
-        # Set all actions to valid.
-        def generate_mask(a,b,c,d):
-            """
-            action_mask = []
-
-            # Two elements
-            action_mask1 = [1 for x in range(a)]
-
-            # Two lists of 3 elements each. 
-            action_mask2 = [[1]*b for x in range(a)]
-
-            #Two lists with 3  lists with 4 elements each.
-            action_mask3 = [[[1]*c for y in range(b)] for x in range(a)]
-
-            #Two lists, with 3 lists, with 4 lists with 5 elements each
-            action_mask4 = [[[[1]*d for z in range(c)]for y in range(b)] for x in range(a)]
-            
-            return [action_mask1, action_mask2, action_mask3, action_mask4]
-            """
-            action_mask = []
-
-            # Two elements
-            action_mask1 = [1 if action_index == 0 else 0 for action_index in range(a)]
-
-            # Two lists of 3 elements each. 
-            action_mask2 = [[1 if action_index == 0 else 0 for action_index in range(b)] for x in range(a)]
-
-            #Two lists with 3  lists with 4 elements each.
-            action_mask3 = [[[1 if action_index == 0 else 0 for action_index in range(c)] for y in range(b)] for x in range(a)]
-
-            #Two lists, with 3 lists, with 4 lists with 5 elements each
-            action_mask4 = [[[[1 if action_index == 0 else 0 for action_index in range(d)] for z in range(c)]for y in range(b)] for x in range(a)]
-
-            return [action_mask1, action_mask2, action_mask3, action_mask4]
-
-        self.engine.valid_actions = generate_mask(21,21,21,21)
-        self.engine.mask_left_hip = self.engine.valid_actions[0]
-        self.engine.mask_left_knee = self.engine.valid_actions[1]
-        self.engine.mask_right_hip = self.engine.valid_actions[2]
-        self.engine.mask_right_knee = self.engine.valid_actions[3]
-
-        pass
 
     def __init__(self, verbose=2, locals=locals, globals=globals):
         super(ActionMaskCallback, self).__init__(verbose)
@@ -242,7 +215,13 @@ class ActionMaskCallback(BaseCallback):
         self.action_mask = None
 
         # Set all actions to valid.
-        self.reset_mask()
+        self.action_space = MultiDiscrete([3, 21, 21, 21, 21])
+        self.engine.valid_actions = mask(self.action_space)
+        self.engine.value_list = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
+        self.engine.mask_left_hip = self.engine.valid_actions[2][0][0]
+        self.engine.mask_left_knee = self.engine.valid_actions[2][0][1]
+        self.engine.mask_right_hip = self.engine.valid_actions[2][0][2]
+        self.engine.mask_right_knee = self.engine.valid_actions[2][0][3]
         self.engine.mask_width = 1
         self.engine.sim = {}
         self.engine.possible_states = []
@@ -256,12 +235,12 @@ class ActionMaskCallback(BaseCallback):
         
         # Query the state to pass to def facts.
         sim = self.training_env.env_method('get_state')
-        print(sim[0]['state'][8], sim[0]['state'][13], sim[0]['action'])
-        left_leg = {'side': 'left', 'contact': sim[0]['state'][8], 'position': sim[0]['legs'][0].position[0]}
-        right_leg = {'side': 'right', 'contact': sim[0]['state'][13], 'position': sim[0]['legs'][1].position[0]}
+        #print(sim[0]['state'][8], sim[0]['state'][13], sim[0]['action'])
+        left_leg = {'side': 'left', 'contact': sim[0]['state'][8], 'position': sim[0]['legs'][0].position[0], 'hip_angle': sim[0]['state'][4], 'knee_angle': sim[0]['state'][6]}
+        right_leg = {'side': 'right', 'contact': sim[0]['state'][13], 'position': sim[0]['legs'][1].position[0], 'hip_angle': sim[0]['state'][9], 'knee_angle': sim[0]['state'][11]}
         
-        self.engine.reset(left_position=left_leg['position'], left_contact=left_leg['contact'], right_position=right_leg['position'], right_contact=right_leg['contact'])
-        #self.reset_mask()
+        self.engine.reset(left_position=left_leg['position'], left_contact=left_leg['contact'], right_position=right_leg['position'], right_contact=right_leg['contact'], left_hip_angle=left_leg['hip_angle'], left_knee_angle=left_leg['knee_angle'], right_hip_angle=right_leg['hip_angle'], right_knee_angle=right_leg['knee_angle'])
+        #self.mask(self.action_space)()
         self.engine.run()
         self.action_mask = self.engine.valid_actions
         self.training_env.env_method('set_infos', self.engine.valid_actions)
@@ -286,82 +265,27 @@ class ActionMaskCallback(BaseCallback):
 
         :return: (bool) If the callback returns False, training is aborted early.
         """
-        # Widen the mask based on reward conditions. 
-        """
-        # Reward based criteria for widening the mask"
-        reward = self.training_env.env_method('get_reward')[0]
-        if reward > 60: # 60
-            self.engine.mask_width = 2
-        elif reward > 62: # 70
-            self.engine.mask_width = 3
-        elif reward > 65:
-            self.engine.mask_width = 4
-        """
-
+        
         # Declare facts from environment. 
         sim = self.training_env.env_method('get_state')
-        print(sim[0]['state'][8], sim[0]['state'][13], sim[0]['action'])
-        left_leg = {'side': 'left', 'contact': sim[0]['state'][8], 'position': sim[0]['legs'][0].position[0]}
-        right_leg = {'side': 'right', 'contact': sim[0]['state'][13], 'position': sim[0]['legs'][1].position[0]}
+        #print(sim[0]['state'][8], sim[0]['state'][13], sim[0]['action'])
+        left_leg = {'side': 'left', 'contact': sim[0]['state'][8], 'position': sim[0]['legs'][0].position[0], 'hip_angle': sim[0]['state'][4], 'knee_angle': sim[0]['state'][6]}
+        right_leg = {'side': 'right', 'contact': sim[0]['state'][13], 'position': sim[0]['legs'][1].position[0], 'hip_angle': sim[0]['state'][9], 'knee_angle': sim[0]['state'][11]}
         #print(left_leg, right_leg)
         #sys.exit()
 
-        # Filter the actions based on the states that will result from taking each of them. 
-        """
-        # Run through all the actions to generate the resulting state vectors.
-        left_hip = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
-        left_knee = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
-        right_hip = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
-        right_knee = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
-
-        self.possible_states = [[[[self.training_env.env_method('simulate', x, y, z, j) for j in right_knee] for z in right_hip]for y in left_knee] for x in left_hip]
-        print('possible states: ', possible_states[0][0][0][0][0])  # x, y, z, j then [0]
-        sys.exit()
-        """
-        def gen(a,b,c,d):
-
-            action_mask = []
-
-            # Two elements
-            action_mask1 = [1 if action_index == 0 else 0 for action_index in range(a)]
-
-            # Two lists of 3 elements each. 
-            action_mask2 = [[1 if action_index == 0 else 0 for action_index in range(b)] for x in range(a)]
-
-            #Two lists with 3  lists with 4 elements each.
-            action_mask3 = [[[1 if action_index == 0 else 0 for action_index in range(c)] for y in range(b)] for x in range(a)]
-
-            #Two lists, with 3 lists, with 4 lists with 5 elements each
-            action_mask4 = [[[[1 if action_index == 0 else 0 for action_index in range(d)] for z in range(c)]for y in range(b)] for x in range(a)]
-
-            return [action_mask1, action_mask2, action_mask3, action_mask4]
-
-        #test_mask = gen(21,21,21,21)
-        #print(test_mask)
-        #print(self.engine.facts)
-        self.engine.reset(left_position=left_leg['position'], left_contact=left_leg['contact'], right_position=right_leg['position'], right_contact=right_leg['contact'])
-        #self.reset_mask()
+        #print('Before engine run: ', self.engine.facts)
+        self.engine.reset(left_position=left_leg['position'], left_contact=left_leg['contact'], right_position=right_leg['position'], right_contact=right_leg['contact'], left_hip_angle=left_leg['hip_angle'], left_knee_angle=left_leg['knee_angle'], right_hip_angle=right_leg['hip_angle'], right_knee_angle=right_leg['knee_angle'])
+        #self.valid_actions = mask(self.action_space)
         #print(self.engine.facts)
         self.engine.run()
-        print(self.engine.facts)
+        #print('After engine run: ', self.engine.facts)
         #print('done run')
         #sys.exit()
         #print('engine run', tf.convert_to_tensor(np.expand_dims(self.engine.valid_actions[3], 0)).get_shape().as_list())
         #self.action_mask = test_mask #self.engine.valid_actions
         self.training_env.env_method('set_infos', self.engine.valid_actions)
 
-        # Log variables to Tensorboard as needed. 
-        """
-        # Log scalar value to Tensorboard
-        co2 = o['CO2']
-        energy = h['energy_elec']
-        comfort = h['error_T_real']
-        summary = tf.Summary(value=[tf.Summary.Value(tag='air_quality', simple_value=co2), tf.Summary.Value(tag='energy', simple_value=energy), tf.Summary.Value(tag='comfort', simple_value=comfort)])
-        #summary2 = tf.Summary(value=[tf.Summary.Value(tag='energy', simple_value=energy)])
-        #summary3 = tf.Summary(value=[tf.Summary.Value(tag='comfort', simple_value=comfort)])
-        self.locals['writer'].add_summary(summary, self.num_timesteps)
-        """
-        
         return True
 
     def _on_rollout_end(self) -> None:
@@ -376,16 +300,18 @@ class ActionMaskCallback(BaseCallback):
         """
         pass
 
-callback = ActionMaskCallback()
+# Callbacks for the Brains
+control_brain_callback = ActionMaskCallback()
+#selector_brain_callback = SelectionMaskCallback()
+  
+control_brain = A2C(MlpPolicy, env, verbose=2) # PPO2 is the other option: tensorboard_log="walker/", nminibatches=1
+control_brain.learn(250000, callback=control_brain_callback)
 
-#model = PPO2(MlpPolicy, env, verbose=2, tensorboard_log="walker/", nminibatches=1)
-#model = PPO2(MlpPolicy, env, verbose=2, nminibatches=1)  
-model = A2C(MlpPolicy, env, verbose=2)
-model.learn(250000, callback=callback)
+#selector_brain = A2C(MlpPolicy, env, verbose=2) # PPO2 is the other option: tensorboard_log="walker/", nminibatches=1
+#selector_brain.learn(250000, callback=selector_brain_callback)
 
 """
 # model.save("expert_model")
-
 # Enjoy trained agent
 
 for _ in range(25):
