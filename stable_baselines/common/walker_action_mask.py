@@ -145,7 +145,7 @@ class BipedalWalker(gym.Env, EzPickle):
         self.valid_actions = []
         self.reset()
 
-        high = np.array([np.inf] * 24)
+        high = np.array([np.inf] * 28)
         #self.action_space = spaces.Box(np.array([-1, -1, -1, -1]), np.array([1, 1, 1, 1]), dtype=np.float32)
         self.observation_space = gym.spaces.Box(-high, high, dtype=np.float32)
 
@@ -165,6 +165,7 @@ class BipedalWalker(gym.Env, EzPickle):
         return {'state': self.state, 'action': self.action, 'legs': self.legs}
 
     def set_infos(self, infos):
+        #print('in infos: ', infos[2][0])
         self.valid_actions = infos
 
     def _destroy(self):
@@ -496,8 +497,10 @@ class BipedalWalker(gym.Env, EzPickle):
             self.joints[3].speed / SPEED_KNEE,
             1.0 if self.legs[3].ground_contact else 0.0
             ]
+        #print(self.legs[0].joints[0].joint.anchorB[0], self.joints[0].anchorB[0])
         state += [l.fraction for l in self.lidar]
-        assert len(state)==24
+        state += [self.joints[0].anchorB[1], self.joints[2].anchorB[1], self.joints[1].anchorB[1], self.joints[3].anchorB[1]] # left hip, right hip, left knee height, right knee height
+        assert len(state)==28
 
         self.scroll = pos.x - VIEWPORT_W/SCALE/5
 
