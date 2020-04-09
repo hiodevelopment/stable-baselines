@@ -9,6 +9,8 @@ import gym
 from gym.spaces import Discrete, MultiDiscrete
 from gym.utils import colorize, seeding, EzPickle
 
+from curiosity_mask.util import create_dummy_action_mask as mask
+
 # This is simple 4-joints walker robot environment.
 #
 # There are two versions:
@@ -142,8 +144,7 @@ class BipedalWalker(gym.Env, EzPickle):
                     categoryBits=0x0001,
                 )
 
-        self.valid_actions = []
-        self.reset()
+        
 
         high = np.array([np.inf] * 28)
         #self.action_space = spaces.Box(np.array([-1, -1, -1, -1]), np.array([1, 1, 1, 1]), dtype=np.float32)
@@ -154,6 +155,9 @@ class BipedalWalker(gym.Env, EzPickle):
         #self.observation_shape = (24,)
         #self.observation_space = gym.spaces.Box(low=-high, high=high, shape=self.observation_shape, dtype=np.float32)
 
+        self.valid_actions = []
+        self.state_machine = None
+        self.reset()
         self.counter = 0
         #print('env init', len(self.valid_actions[0]), len(self.valid_actions[1]), len(self.valid_actions[2]), len(self.valid_actions[3]))
 
@@ -165,8 +169,11 @@ class BipedalWalker(gym.Env, EzPickle):
         return {'state': self.state, 'action': self.action, 'legs': self.legs}
 
     def set_infos(self, infos):
-        #print('in infos: ', infos[2][0])
+        #print('in infos: ', infos[0])
         self.valid_actions = infos
+
+    def set_state_machine(self, machine):
+        self.state_machine = machine
 
     def _destroy(self):
         if not self.terrain: return
@@ -310,6 +317,8 @@ class BipedalWalker(gym.Env, EzPickle):
             self.cloud_poly.append( (poly,x1,x2) )
 
     def reset(self):
+        self.valid_actions = mask(self.action_space)
+        self.valid_actions[0] = [1, 0, 0]
         self._destroy()
         self.world.contactListener_bug_workaround = ContactDetector(self)
         self.world.contactListener = self.world.contactListener_bug_workaround
@@ -395,9 +404,13 @@ class BipedalWalker(gym.Env, EzPickle):
                 return fraction
         self.lidar = [LidarCallback() for _ in range(10)]
 
-        self.actions = {}
+        self.action = []
         self.state = {}
-        #print('env reset')
+        if self.state_machine is not None and self.state_machine.state != 'lift_leg':
+            self.state_machine.reset() # reset the state of the state machine. 
+            self.state_machine.num_timesteps = 0 # reset the iteration counter. 
+            print('reset ', self.state_machine.num_timesteps)
+        #print('env reset', self.valid_actions)
         return self.step(np.array([0,0,0,0]))[0]
 
     def simulate(self, a, b, c, d):
@@ -440,7 +453,7 @@ class BipedalWalker(gym.Env, EzPickle):
     def step(self, masked_action):
         #self.hull.ApplyForceToCenter((0, 20), True) -- Uncomment this to receive a bit of stability help
 
-        print('in step', masked_action)
+        #print('in step', self.valid_actions)
 
         left_hip = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
         left_knee = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
@@ -450,7 +463,7 @@ class BipedalWalker(gym.Env, EzPickle):
         action = [left_hip[masked_action[0]], left_knee[masked_action[1]], right_hip[masked_action[2]], right_knee[masked_action[3]]]
         #print('in step, action:', action)
 
-        self.action = action
+        self.action = masked_action
 
         control_speed = False  # Should be easier as well
         if control_speed:
@@ -522,7 +535,7 @@ class BipedalWalker(gym.Env, EzPickle):
             done   = True
         if pos[0] > (TERRAIN_LENGTH-TERRAIN_GRASS)*TERRAIN_STEP:
             done   = True
-        if self.counter > 50:
+        if self.counter > 75:
             done = True
 
         self.state = state

@@ -375,6 +375,7 @@ class A2CRunner(AbstractEnvRunner):
                     return [None] * 8
 
             # Moved callback ahead of this so that action mask can be set before the environment is stepped. 
+            # original order: env.step, num timesteps, callback, mask clear, infos.
             obs, rewards, dones, infos = self.env.step(clipped_actions)
             
             for info in infos:
