@@ -91,9 +91,9 @@ class Walk(object):
         # Each concept rule needs to mask the gait and flip bits for control concept.
         self.action_mask[0] = [1, 0, 0]  # Limit selection to gait phase 1.
 
-        # Flip bits for joint modifications. (Left Hip, Right Hip, Left Knee, Right Knee)
+        # Flip bits for joint modifications. (Left Hip, Left Knee, Right, Hip, Right Knee)
         if self.swinging_leg == 'left':
-            self.action_mask[1][gait-1] = [1 if (action_index >= teaching['slider1-1a'] or action_index <= teaching['slider1-1b']) else 0 for action_index in range(21)] # Positive hip motion for planted leg.
+            self.action_mask[1][gait-1] = [1 if (action_index >= teaching['slider1-1a'] and action_index <= teaching['slider1-1b']) else 0 for action_index in range(21)] # Positive hip motion for planted leg.
             for joint1_value in range(21):
                 self.action_mask[2][gait-1][joint1_value] = [1 if (action_index >= teaching['slider1-2a'] and action_index <= teaching['slider1-2b']) else 0 for action_index in range(21)] # Negative hip motion for swinging leg.
             for joint1_value in range(21):
@@ -104,17 +104,22 @@ class Walk(object):
                     for joint3_value in range(21):
                         self.action_mask[4][gait-1][joint1_value][joint2_value][joint3_value] = [1 if (action_index >= teaching['slider1-4a'] and action_index <= teaching['slider1-4b']) else 0 for action_index in range(21)] # Negative knee motion for swinging leg.
             
+        #print('swinging hip: ', self.action_mask[1][gait-1], )
+        #print('swinging knee: ', self.action_mask[2][gait-1][joint1_value])
+        #print('planted hip: ', self.action_mask[3][gait-1][joint1_value][joint2_value])
+        #print('planted knee: ', self.action_mask[4][gait-1][joint1_value][joint2_value][joint3_value])
+
         if self.swinging_leg == 'right':
-            self.action_mask[1][gait-1] = [1 if (action_index >= teaching['slider1-2a'] and action_index <= teaching['slider1-2b']) else 0 for action_index in range(21)] # Positive hip motion for planted leg.
+            self.action_mask[1][gait-1] = [1 if (action_index >= teaching['slider1-3a'] and action_index <= teaching['slider1-3b']) else 0 for action_index in range(21)] # Positive hip motion for planted leg.
             for joint1_value in range(21):
-                self.action_mask[2][gait-1][joint1_value] = [1 if (action_index >= teaching['slider1-1a'] and action_index <= teaching['slider1-1b']) else 0 for action_index in range(21)] # Negative hip motion for swinging leg.
+                self.action_mask[2][gait-1][joint1_value] = [1 if (action_index >= teaching['slider1-4a'] and action_index <= teaching['slider1-4b']) else 0 for action_index in range(21)] # Negative hip motion for swinging leg.
             for joint1_value in range(21):
                     for joint2_value in range(21):
-                        self.action_mask[3][gait-1][joint1_value][joint2_value] = [1 if (action_index >= teaching['slider1-4a'] and action_index <= teaching['slider1-4b']) else 0 for action_index in range(21)] # Slight Positive knee motion for planted leg.
+                        self.action_mask[3][gait-1][joint1_value][joint2_value] = [1 if (action_index >= teaching['slider1-1a'] and action_index <= teaching['slider1-1b']) else 0 for action_index in range(21)] # Slight Positive knee motion for planted leg.
             for joint1_value in range(21):
                 for joint2_value in range(21):
                     for joint3_value in range(21):
-                        self.action_mask[4][gait-1][joint1_value][joint2_value][joint3_value] = [1 if (action_index >= teaching['slider1-3a'] and action_index <= teaching['slider1-3b']) else 0 for action_index in range(21)] # Negative knee motion for swinging leg.
+                        self.action_mask[4][gait-1][joint1_value][joint2_value][joint3_value] = [1 if (action_index >= teaching['slider1-2a'] and action_index <= teaching['slider1-2b']) else 0 for action_index in range(21)] # Negative knee motion for swinging leg.
         pass
 
     def set_mask_gait_2(self, event): 
@@ -126,7 +131,7 @@ class Walk(object):
         # Each concept rule needs to mask the gait and flip bits for control concept.
         self.action_mask[0] = [0, 1, 0]  # Limit selection to gait phase 2.
 
-        # Flip bits for joint modifications. (Left Hip, Right Hip, Left Knee, Right Knee)
+        # Flip bits for joint modifications. (Left Hip, Left Knee, Right, Hip, Right Knee)
         if self.swinging_leg == 'left':
             self.action_mask[1][gait-1] = [1 if (action_index >= teaching['slider2-1a'] and action_index <= teaching['slider2-1b']) else 0 for action_index in range(21)] # Positive hip motion for planted leg.
             for joint1_value in range(21):
@@ -140,16 +145,16 @@ class Walk(object):
                         self.action_mask[4][gait-1][joint1_value][joint2_value][joint3_value] = [1 if (action_index >= teaching['slider2-4a'] and action_index <= teaching['slider2-4b']) else 0 for action_index in range(21)] # Negative knee motion for swinging leg.
             
         if self.swinging_leg == 'right':
-            self.action_mask[1][gait-1] = [1 if (action_index >= teaching['slider2-2a'] and action_index <= teaching['slider2-2b']) else 0 for action_index in range(21)] # Positive hip motion for planted leg.
+            self.action_mask[1][gait-1] = [1 if (action_index >= teaching['slider2-3a'] and action_index <= teaching['slider2-3b']) else 0 for action_index in range(21)] # Positive hip motion for planted leg.
             for joint1_value in range(21):
-                self.action_mask[2][gait-1][joint1_value] = [1 if (action_index >= teaching['slider2-1a'] and action_index <= teaching['slider2-1b']) else 0 for action_index in range(21)] # Negative hip motion for swinging leg.
+                self.action_mask[2][gait-1][joint1_value] = [1 if (action_index >= teaching['slider2-4a'] and action_index <= teaching['slider2-4b']) else 0 for action_index in range(21)] # Negative hip motion for swinging leg.
             for joint1_value in range(21):
                     for joint2_value in range(21):
-                        self.action_mask[3][gait-1][joint1_value][joint2_value] = [1 if (action_index >= teaching['slider2-4a'] and action_index <= teaching['slider2-4b']) else 0 for action_index in range(21)] # Slight Positive knee motion for planted leg.
+                        self.action_mask[3][gait-1][joint1_value][joint2_value] = [1 if (action_index >= teaching['slider2-1a'] and action_index <= teaching['slider2-1b']) else 0 for action_index in range(21)] # Slight Positive knee motion for planted leg.
             for joint1_value in range(21):
                 for joint2_value in range(21):
                     for joint3_value in range(21):
-                        self.action_mask[4][gait-1][joint1_value][joint2_value][joint3_value] = [1 if (action_index >= teaching['slider2-3a'] and action_index <= teaching['slider2-3b']) else 0 for action_index in range(21)] # Negative knee motion for swinging leg.
+                        self.action_mask[4][gait-1][joint1_value][joint2_value][joint3_value] = [1 if (action_index >= teaching['slider2-2a'] and action_index <= teaching['slider2-2b']) else 0 for action_index in range(21)] # Negative knee motion for swinging leg.
         pass
 
     def set_mask_gait_3(self, event): 
@@ -161,7 +166,7 @@ class Walk(object):
         # Each concept rule needs to mask the gait and flip bits for control concept.
         self.action_mask[0] = [0, 0, 1]  # Limit selection to gait phase 3.
 
-        # Flip bits for joint modifications. (Left Hip, Right Hip, Left Knee, Right Knee)
+        # Flip bits for joint modifications.  (Left Hip, Left Knee, Right, Hip, Right Knee)
         if self.swinging_leg == 'left':
             self.action_mask[1][gait-1] = [1 if (action_index >= teaching['slider3-1a'] and action_index <= teaching['slider3-1b']) else 0 for action_index in range(21)] # Positive hip motion for planted leg.
             for joint1_value in range(21):
@@ -173,18 +178,23 @@ class Walk(object):
                 for joint2_value in range(21):
                     for joint3_value in range(21):
                         self.action_mask[4][gait-1][joint1_value][joint2_value][joint3_value] = [1 if (action_index >= teaching['slider3-4a'] and action_index <= teaching['slider3-4b']) else 0 for action_index in range(21)] # Negative knee motion for swinging leg.
-            
+        
+        #print('swinging hip: ', self.action_mask[1][gait-1])
+        #print('swinging knee: ', self.action_mask[2][gait-1][joint1_value])
+        #print('planted hip: ', self.action_mask[3][gait-1][joint1_value][joint2_value])
+        #print('planted knee: ', self.action_mask[4][gait-1][joint1_value][joint2_value][joint3_value])
+
         if self.swinging_leg == 'right':
-            self.action_mask[1][gait-1] = [1 if (action_index >= teaching['slider3-2a'] and action_index <= teaching['slider3-2b']) else 0 for action_index in range(21)] # Positive hip motion for planted leg.
+            self.action_mask[1][gait-1] = [1 if (action_index >= teaching['slider3-3a'] and action_index <= teaching['slider3-3b']) else 0 for action_index in range(21)] # Positive hip motion for planted leg.
             for joint1_value in range(21):
-                self.action_mask[2][gait-1][joint1_value] = [1 if (action_index >= teaching['slider3-1a'] and action_index <= teaching['slider3-1b']) else 0 for action_index in range(21)] # Negative hip motion for swinging leg.
+                self.action_mask[2][gait-1][joint1_value] = [1 if (action_index >= teaching['slider3-4a'] and action_index <= teaching['slider3-4b']) else 0 for action_index in range(21)] # Negative hip motion for swinging leg.
             for joint1_value in range(21):
                     for joint2_value in range(21):
-                        self.action_mask[3][gait-1][joint1_value][joint2_value] = [1 if (action_index >= teaching['slider3-4a'] and action_index <= teaching['slider3-4b']) else 0 for action_index in range(21)] # Slight Positive knee motion for planted leg.
+                        self.action_mask[3][gait-1][joint1_value][joint2_value] = [1 if (action_index >= teaching['slider3-1a'] and action_index <= teaching['slider3-1b']) else 0 for action_index in range(21)] # Slight Positive knee motion for planted leg.
             for joint1_value in range(21):
                 for joint2_value in range(21):
                     for joint3_value in range(21):
-                        self.action_mask[4][gait-1][joint1_value][joint2_value][joint3_value] = [1 if (action_index >= teaching['slider3-3a'] and action_index <= teaching['slider3-3b']) else 0 for action_index in range(21)] # Negative knee motion for swinging leg.
+                        self.action_mask[4][gait-1][joint1_value][joint2_value][joint3_value] = [1 if (action_index >= teaching['slider3-2a'] and action_index <= teaching['slider3-2b']) else 0 for action_index in range(21)] # Negative knee motion for swinging leg.
         pass
 
 class ActionMaskCallback(BaseCallback):
