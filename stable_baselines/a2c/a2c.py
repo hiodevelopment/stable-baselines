@@ -349,6 +349,17 @@ class A2CRunner(AbstractEnvRunner):
         mb_states = self.states
         ep_infos = []
         for _ in range(self.n_steps):
+            # Check the callback FIRST to get the action mask before taking ANY actions. 
+            if self.callback is not None:
+                # Get action mask from callback
+                if (self.callback.on_step() is True or self.callback.on_training_start() is True) and self.callback.action_mask is not None:
+                    self.action_masks.append(self.callback.action_mask)
+                    #print('in ppo callbacks', self.callback.action_mask[1][0])
+                # Abort training early
+                if self.callback.on_step() is False:
+                    self.continue_training = False
+                    # Return dummy values
+                    return [None] * 9
             actions, values, states, _ = self.model.step(self.obs, self.states, self.dones, action_mask=self.action_masks)
             mb_obs.append(np.copy(self.obs))
             mb_actions.append(actions)
@@ -358,26 +369,11 @@ class A2CRunner(AbstractEnvRunner):
             # Clip the actions to avoid out of bound error
             if isinstance(self.env.action_space, gym.spaces.Box):
                 clipped_actions = np.clip(actions, self.env.action_space.low, self.env.action_space.high)
-        
+            obs, rewards, dones, infos = self.env.step(clipped_actions)
             self.model.num_timesteps += self.n_envs
             
-            # Moved mask clear before callback so that mask can be set from callback. 
-            self.action_masks.clear()
-            if self.callback is not None:
-                # Get action mask from callback
-                if self.callback.on_step() is True and self.callback.action_mask is not None:
-                    self.action_masks.append(self.callback.action_mask)
-                    #print('in a2c', self.callback.action_mask)
-                # Abort training early
-                if self.callback.on_step() is False:
-                    self.continue_training = False
-                    # Return dummy values
-                    return [None] * 8
-
-            # Moved callback ahead of this so that action mask can be set before the environment is stepped. 
-            # original order: env.step, num timesteps, callback, mask clear, infos.
-            obs, rewards, dones, infos = self.env.step(clipped_actions)
-            
+            # Removing the environment based action mask mechanism for now. 
+            """
             for info in infos:
                 maybe_ep_info = info.get('episode')
                 if maybe_ep_info is not None:
@@ -387,6 +383,8 @@ class A2CRunner(AbstractEnvRunner):
                 env_action_mask = info.get('action_mask')
                 if env_action_mask is not None:
                     self.action_masks.append(env_action_mask)
+                    print('in ppo infos', self.callback.action_mask[1][0])
+            """ 
 
             self.states = states
             self.dones = dones

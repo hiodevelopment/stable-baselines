@@ -9,8 +9,9 @@ import stable_baselines.common.walker_action_mask as walker
 from stable_baselines import PPO2, A2C
 from stable_baselines.common.policies import MlpPolicy
 from stable_baselines.common.vec_env import DummyVecEnv
-from stable_baselines.common.callbacks import BaseCallback
+from stable_baselines.common.callbacks import BaseCallback, CheckpointCallback, EveryNTimesteps
 from curiosity_mask.util import create_dummy_action_mask as mask
+from curiosity_mask.ui import UI
 
 from transitions import Machine
 
@@ -49,18 +50,16 @@ class Walk(object):
 
     def is_swinging_leg_leading(self, event): 
         
-        if self.swinging_leg == 'right':  #  and self.num_timesteps > 30
-            self.switch_legs()
-            return event.kwargs.get('right_position') > 0.8*event.kwargs.get('left_position')
-        if self.swinging_leg == 'left':  #   and self.num_timesteps > 30
-            self.switch_legs()
-            return event.kwargs.get('left_position') > 0.8*event.kwargs.get('right_position')
+        if self.swinging_leg == 'right' and self.num_timesteps > 100:  #  and self.num_timesteps > 30
+            return event.kwargs.get('right_position') > 0.9*event.kwargs.get('left_position')
+        if self.swinging_leg == 'left' and self.num_timesteps > 100:  #   and self.num_timesteps > 30
+            return event.kwargs.get('left_position') > 0.9*event.kwargs.get('right_position')
 
 
     def start_lifting_swinging_leg(self, event): 
         return event.kwargs.get('action')[0] == 2  # The brain decided to start lifting the swinging leg.
  
-    def switch_legs(self):
+    def switch_legs(self, event):
         self.swinging_leg = 'right' if self.swinging_leg == 'left' else 'left'
         #print('switching legs: ', self.swinging_leg)
 
@@ -73,79 +72,119 @@ class Walk(object):
     def reset_step_counter(self, event):
         self.num_timesteps = 0
 
-    def set_mask_gait_1(self, event): 
+    def terminate(self, event):
+        self.terminal = True
 
-        #print('Concept 1 Activated', event.kwargs.get('action'),self.action_mask[0], self.num_timesteps)
+    def reinstate(self, event):
+        self.terminal = False
+
+    def set_mask_gait_1(self, event): 
+        
+        if event.kwargs.get('action') is not None:
+            print('Concept 1 Activated', event.kwargs.get('action'), self.action_mask[0], self.num_timesteps, self.swinging_leg, self.terminal)
+        else:
+            print(self.teaching)
+            print('Concept 1 Activated ', 'no action', self.action_mask[0], self.num_timesteps, self.swinging_leg, self.terminal)
+        
         gait = 1
+        teaching = self.teaching
         # Each concept rule needs to mask the gait and flip bits for control concept.
         self.action_mask[0] = [1, 0, 0]  # Limit selection to gait phase 1.
 
         # Flip bits for joint modifications. (Left Hip, Right Hip, Left Knee, Right Knee)
-        if self.swinging_leg == 'right':
-            self.action_mask[1][gait-1] = [1 if (action_index >= 9 and action_index <= 14) else 0 for action_index in range(21)] # Positive hip motion for planted leg.
-            for joint1_value in range(21):
-                self.action_mask[2][gait-1][joint1_value] = [1 if action_index >= 10 else 0 for action_index in range(21)] # Negative hip motion for swinging leg.
-            for joint1_value in range(21):
-                    for joint2_value in range(21):
-                        self.action_mask[3][gait-1][joint1_value][joint2_value] = [1 if (action_index >= 8 and action_index <= 12) else 0 for action_index in range(21)] # Slight Positive knee motion for planted leg.
-            for joint1_value in range(21):
-                for joint2_value in range(21):
-                    for joint3_value in range(21):
-                        self.action_mask[4][gait-1][joint1_value][joint2_value][joint3_value] = [1 if action_index == 0 else 0 for action_index in range(21)] # Negative knee motion for swinging leg.
-            
         if self.swinging_leg == 'left':
-            self.action_mask[1][gait-1] = [1 if action_index >= 10 else 0 for action_index in range(21)] # Positive hip motion for planted leg.
+            self.action_mask[1][gait-1] = [1 if (action_index >= teaching['slider1-1a'] or action_index <= teaching['slider1-1b']) else 0 for action_index in range(21)] # Positive hip motion for planted leg.
             for joint1_value in range(21):
-                self.action_mask[2][gait-1][joint1_value] = [1 if (action_index >= 9 and action_index <= 14) else 0 for action_index in range(21)] # Negative hip motion for swinging leg.
+                self.action_mask[2][gait-1][joint1_value] = [1 if (action_index >= teaching['slider1-2a'] and action_index <= teaching['slider1-2b']) else 0 for action_index in range(21)] # Negative hip motion for swinging leg.
             for joint1_value in range(21):
                     for joint2_value in range(21):
-                        self.action_mask[3][gait-1][joint1_value][joint2_value] = [1 if (action_index >= -2 and action_index <= 2) else 0 for action_index in range(21)] # Slight Positive knee motion for planted leg.
+                        self.action_mask[3][gait-1][joint1_value][joint2_value] = [1 if (action_index == teaching['slider1-3a'] and action_index == teaching['slider1-3b']) else 0 for action_index in range(21)] # Slight Positive knee motion for planted leg.
             for joint1_value in range(21):
                 for joint2_value in range(21):
                     for joint3_value in range(21):
-                        self.action_mask[4][gait-1][joint1_value][joint2_value][joint3_value] = [1 if (action_index >= 8 and action_index <= 12) else 0 for action_index in range(21)] # Negative knee motion for swinging leg.
+                        self.action_mask[4][gait-1][joint1_value][joint2_value][joint3_value] = [1 if (action_index >= teaching['slider1-4a'] and action_index <= teaching['slider1-4b']) else 0 for action_index in range(21)] # Negative knee motion for swinging leg.
+            
+        if self.swinging_leg == 'right':
+            self.action_mask[1][gait-1] = [1 if (action_index >= teaching['slider1-2a'] and action_index <= teaching['slider1-2b']) else 0 for action_index in range(21)] # Positive hip motion for planted leg.
+            for joint1_value in range(21):
+                self.action_mask[2][gait-1][joint1_value] = [1 if (action_index >= teaching['slider1-1a'] and action_index <= teaching['slider1-1b']) else 0 for action_index in range(21)] # Negative hip motion for swinging leg.
+            for joint1_value in range(21):
+                    for joint2_value in range(21):
+                        self.action_mask[3][gait-1][joint1_value][joint2_value] = [1 if (action_index >= teaching['slider1-4a'] and action_index <= teaching['slider1-4b']) else 0 for action_index in range(21)] # Slight Positive knee motion for planted leg.
+            for joint1_value in range(21):
+                for joint2_value in range(21):
+                    for joint3_value in range(21):
+                        self.action_mask[4][gait-1][joint1_value][joint2_value][joint3_value] = [1 if (action_index >= teaching['slider1-3a'] and action_index <= teaching['slider1-3b']) else 0 for action_index in range(21)] # Negative knee motion for swinging leg.
         pass
 
     def set_mask_gait_2(self, event): 
 
-        #print('Concept 2 Activated', event.kwargs.get('action'), self.action_mask[0], round(event.kwargs.get('left_position'), 2), \
-           #round(event.kwargs.get('right_position'), 2), self.num_timesteps)
+        print('Concept 2 Activated', event.kwargs.get('action'), self.action_mask[0], round(event.kwargs.get('left_position'), 2), \
+           round(event.kwargs.get('right_position'), 2), self.num_timesteps, self.swinging_leg, self.terminal)
         gait = 2
+        teaching = event.kwargs.get('teaching')
         # Each concept rule needs to mask the gait and flip bits for control concept.
         self.action_mask[0] = [0, 1, 0]  # Limit selection to gait phase 2.
 
         # Flip bits for joint modifications. (Left Hip, Right Hip, Left Knee, Right Knee)
-        self.action_mask[1][gait-1] = [1 if action_index == 12 else 0 for action_index in range(21)] # Positive hip motion for planted leg.
-        for joint1_value in range(21):
-            self.action_mask[2][gait-1][joint1_value] = [1 if action_index == 6 else 0 for action_index in range(21)] # Positive hip motion for swinging leg.
-        for joint1_value in range(21):
+        if self.swinging_leg == 'left':
+            self.action_mask[1][gait-1] = [1 if (action_index >= teaching['slider2-1a'] and action_index <= teaching['slider2-1b']) else 0 for action_index in range(21)] # Positive hip motion for planted leg.
+            for joint1_value in range(21):
+                self.action_mask[2][gait-1][joint1_value] = [1 if (action_index >= teaching['slider2-2a'] and action_index <= teaching['slider2-2b']) else 0 for action_index in range(21)] # Negative hip motion for swinging leg.
+            for joint1_value in range(21):
+                    for joint2_value in range(21):
+                        self.action_mask[3][gait-1][joint1_value][joint2_value] = [1 if (action_index >= teaching['slider2-3a'] and action_index <= teaching['slider2-3b']) else 0 for action_index in range(21)] # Slight Positive knee motion for planted leg.
+            for joint1_value in range(21):
                 for joint2_value in range(21):
-                    self.action_mask[3][gait-1][joint1_value][joint2_value] = [1 if action_index == 12 else 0 for action_index in range(21)] # Slight Positive knee motion for planted leg.
-        for joint1_value in range(21):
-            for joint2_value in range(21):
-                for joint3_value in range(21):
-                    self.action_mask[4][gait-1][joint1_value][joint2_value][joint3_value] = [1 if action_index == 0 else 0 for action_index in range(21)] # Negative knee motion for swinging leg.
+                    for joint3_value in range(21):
+                        self.action_mask[4][gait-1][joint1_value][joint2_value][joint3_value] = [1 if (action_index >= teaching['slider2-4a'] and action_index <= teaching['slider2-4b']) else 0 for action_index in range(21)] # Negative knee motion for swinging leg.
+            
+        if self.swinging_leg == 'right':
+            self.action_mask[1][gait-1] = [1 if (action_index >= teaching['slider2-2a'] and action_index <= teaching['slider2-2b']) else 0 for action_index in range(21)] # Positive hip motion for planted leg.
+            for joint1_value in range(21):
+                self.action_mask[2][gait-1][joint1_value] = [1 if (action_index >= teaching['slider2-1a'] and action_index <= teaching['slider2-1b']) else 0 for action_index in range(21)] # Negative hip motion for swinging leg.
+            for joint1_value in range(21):
+                    for joint2_value in range(21):
+                        self.action_mask[3][gait-1][joint1_value][joint2_value] = [1 if (action_index >= teaching['slider2-4a'] and action_index <= teaching['slider2-4b']) else 0 for action_index in range(21)] # Slight Positive knee motion for planted leg.
+            for joint1_value in range(21):
+                for joint2_value in range(21):
+                    for joint3_value in range(21):
+                        self.action_mask[4][gait-1][joint1_value][joint2_value][joint3_value] = [1 if (action_index >= teaching['slider2-3a'] and action_index <= teaching['slider2-3b']) else 0 for action_index in range(21)] # Negative knee motion for swinging leg.
         pass
 
     def set_mask_gait_3(self, event): 
 
-        #print('Concept 3 Activated', event.kwargs.get('action'), self.action_mask[0], round(event.kwargs.get('left_position'), 2), \
-           #round(event.kwargs.get('right_position'), 2), self.num_timesteps)
+        print('Concept 3 Activated', event.kwargs.get('action'), self.action_mask[0], round(event.kwargs.get('left_position'), 2), \
+           round(event.kwargs.get('right_position'), 2), self.num_timesteps, self.swinging_leg, self.terminal)
         gait = 3
+        teaching = event.kwargs.get('teaching')
         # Each concept rule needs to mask the gait and flip bits for control concept.
         self.action_mask[0] = [0, 0, 1]  # Limit selection to gait phase 3.
 
         # Flip bits for joint modifications. (Left Hip, Right Hip, Left Knee, Right Knee)
-        self.action_mask[1][gait-1] = [1 if action_index == 16 else 0 for action_index in range(21)] # Positive hip motion for planted leg.
-        for joint1_value in range(21):
-            self.action_mask[2][gait-1][joint1_value] = [1 if action_index == 2 else 0 for action_index in range(21)] # Positive hip motion for planted leg.
-        for joint1_value in range(21):
+        if self.swinging_leg == 'left':
+            self.action_mask[1][gait-1] = [1 if (action_index >= teaching['slider3-1a'] and action_index <= teaching['slider3-1b']) else 0 for action_index in range(21)] # Positive hip motion for planted leg.
+            for joint1_value in range(21):
+                self.action_mask[2][gait-1][joint1_value] = [1 if (action_index >= teaching['slider3-2a'] and action_index <= teaching['slider3-2b']) else 0 for action_index in range(21)] # Negative hip motion for swinging leg.
+            for joint1_value in range(21):
+                    for joint2_value in range(21):
+                        self.action_mask[3][gait-1][joint1_value][joint2_value] = [1 if (action_index >= teaching['slider3-3a'] and action_index <= teaching['slider3-3b']) else 0 for action_index in range(21)] # Slight Positive knee motion for planted leg.
+            for joint1_value in range(21):
                 for joint2_value in range(21):
-                    self.action_mask[3][gait-1][joint1_value][joint2_value] = [1 if action_index == 12 else 0 for action_index in range(21)] # Slight Positive knee motion for planted leg.
-        for joint1_value in range(21):
-            for joint2_value in range(21):
-                for joint3_value in range(21):
-                    self.action_mask[4][gait-1][joint1_value][joint2_value][joint3_value] = [1 if action_index == 10 else 0 for action_index in range(21)] # Negative knee motion for swinging leg.
+                    for joint3_value in range(21):
+                        self.action_mask[4][gait-1][joint1_value][joint2_value][joint3_value] = [1 if (action_index >= teaching['slider3-4a'] and action_index <= teaching['slider3-4b']) else 0 for action_index in range(21)] # Negative knee motion for swinging leg.
+            
+        if self.swinging_leg == 'right':
+            self.action_mask[1][gait-1] = [1 if (action_index >= teaching['slider3-2a'] and action_index <= teaching['slider3-2b']) else 0 for action_index in range(21)] # Positive hip motion for planted leg.
+            for joint1_value in range(21):
+                self.action_mask[2][gait-1][joint1_value] = [1 if (action_index >= teaching['slider3-1a'] and action_index <= teaching['slider3-1b']) else 0 for action_index in range(21)] # Negative hip motion for swinging leg.
+            for joint1_value in range(21):
+                    for joint2_value in range(21):
+                        self.action_mask[3][gait-1][joint1_value][joint2_value] = [1 if (action_index >= teaching['slider3-4a'] and action_index <= teaching['slider3-4b']) else 0 for action_index in range(21)] # Slight Positive knee motion for planted leg.
+            for joint1_value in range(21):
+                for joint2_value in range(21):
+                    for joint3_value in range(21):
+                        self.action_mask[4][gait-1][joint1_value][joint2_value][joint3_value] = [1 if (action_index >= teaching['slider3-3a'] and action_index <= teaching['slider3-3b']) else 0 for action_index in range(21)] # Negative knee motion for swinging leg.
         pass
 
 class ActionMaskCallback(BaseCallback):
@@ -154,6 +193,13 @@ class ActionMaskCallback(BaseCallback):
 
     :param verbose: (int) Verbosity level 0: not output 1: info 2: debug
     """
+    def remap(self, x, in_min, in_max, out_min, out_max):
+        return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
+
+    def translate_ui(self, ui):
+        for key, value in ui.items():
+            ui[key] = self.remap(value, -10, 10, 0, 20)
+        return ui
 
     def __init__(self, verbose=2, locals=locals, globals=globals):
         super(ActionMaskCallback, self).__init__(verbose)
@@ -187,6 +233,8 @@ class ActionMaskCallback(BaseCallback):
         self.gait.num_timesteps = self.num_timesteps
         self.gait.action_mask = mask(self.action_space)
         self.gait.action_mask[0] = [1, 0, 0]
+        self.gait.swinging_leg = 'right'
+        self.gait.terminal = False
         machine = Machine(self.gait, states=states, send_event=True, initial='lift_leg')
         #machine.add_transition('move', 'lift_leg', 'plant_leg', conditions='is_swinging_leg_lifted', prepare='set_mask_gait_1', before=['set_mask_gait_2', 'reset_step_counter'])
         #machine.add_transition('move', 'plant_leg', 'switch_leg', conditions='is_swinging_leg_planted', prepare='set_mask_gait_2', before=['set_mask_gait_2', 'reset_step_counter'])
@@ -194,16 +242,25 @@ class ActionMaskCallback(BaseCallback):
         
         machine.add_transition('move', 'lift_leg', 'fuzzy_transition_1', conditions='is_swinging_leg_lifted', prepare='set_mask_gait_1', before='set_mask_gait_1')
         machine.add_transition('move', 'fuzzy_transition_1', 'plant_leg', conditions='done_lifting_swinging_leg', prepare=['set_mask_gait_1', 'set_fuzzy_decision1'], before=['set_mask_gait_2', 'reset_step_counter'])
-        machine.add_transition('move', 'plant_leg', 'switch_leg', conditions='is_swinging_leg_planted', prepare='set_mask_gait_2', before=['set_mask_gait_3', 'reset_step_counter'])
+        machine.add_transition('move', 'plant_leg', 'switch_leg', conditions='is_swinging_leg_planted', prepare='set_mask_gait_2', before=['switch_legs', 'set_mask_gait_3', 'reset_step_counter'])
         machine.add_transition('move', 'switch_leg', 'fuzzy_transition_2', conditions='is_swinging_leg_leading', prepare='set_mask_gait_3', before='set_mask_gait_3')
         machine.add_transition('move', 'fuzzy_transition_2', 'lift_leg', conditions='start_lifting_swinging_leg', prepare=['set_mask_gait_3', 'set_fuzzy_decision2'], before=['set_mask_gait_1', 'reset_step_counter'])
 
-        machine.add_transition('reset', 'fuzzy_transition_1', 'lift_leg', before='set_mask_gait_1')
-        machine.add_transition('reset', 'plant_leg', 'lift_leg', before='set_mask_gait_1')
-        machine.add_transition('reset', 'switch_leg', 'lift_leg', before='set_mask_gait_1')
-        machine.add_transition('reset', 'fuzzy_transition_2', 'lift_leg', before='set_mask_gait_1')
-        self.gait.swinging_leg = 'right'
+        machine.add_transition('reset', 'fuzzy_transition_1', 'lift_leg', before=['reinstate', 'set_mask_gait_1'])
+        machine.add_transition('reset', 'plant_leg', 'lift_leg', before=['reinstate', 'set_mask_gait_1'])
+        machine.add_transition('reset', 'switch_leg', 'lift_leg', before=['reinstate', 'set_mask_gait_1'])
+        machine.add_transition('reset', 'fuzzy_transition_2', 'lift_leg', before=['reinstate', 'set_mask_gait_1'])
         #print('callback init')
+        self.ui = UI()
+        self.ui.event, self.ui.values = self.ui.window.read()
+        if self.ui.event == 'Cancel':
+            self.ui.window.close()
+        elif self.ui.event == 'Reset':
+           self.training_env.env_method('reset')
+        elif self.ui.event in (None, 'Submit'):
+           self.gait.teaching = self.translate_ui(self.ui.values) 
+           #self.ui.window.close()
+    
 
     def _on_training_start(self) -> None:
         """
@@ -219,17 +276,29 @@ class ActionMaskCallback(BaseCallback):
         left_leg = {'side': 'left', 'contact': sim[0]['state'][8], 'position': sim[0]['legs'][1].position[0], 'hip_angle': sim[0]['state'][4], 'knee_angle': sim[0]['state'][6], 'hip_height': sim[0]['state'][26], 'knee_height': sim[0]['state'][24]}
         right_leg = {'side': 'right', 'contact': sim[0]['state'][13], 'position': sim[0]['legs'][3].position[0], 'hip_angle': sim[0]['state'][9], 'knee_angle': sim[0]['state'][11], 'hip_height': sim[0]['state'][27], 'knee_height': sim[0]['state'][25]}
 
+        # Read from Machine Teaching UI
+        
+        self.ui.event, self.ui.values = self.ui.window.read()
+        if self.ui.event == 'Cancel':
+            self.ui.window.close()
+        elif self.ui.event == 'Reset':
+           self.training_env.env_method('reset')
+        elif self.ui.event in (None, 'Submit'):
+           self.gait.teaching = self.translate_ui(self.ui.values) 
+        
+
         self.gait.move(action=sim[0]['action'], left_position=left_leg['position'], left_contact=left_leg['contact'], \
             right_position=right_leg['position'], right_contact=right_leg['contact'], \
                 left_hip_angle=left_leg['hip_angle'], left_knee_angle=left_leg['knee_angle'], \
                     right_hip_angle=right_leg['hip_angle'], right_knee_angle=right_leg['knee_angle'], \
                         left_hip_height=left_leg['hip_height'], right_hip_height=right_leg['hip_height'], \
-                            left_knee_height=left_leg['knee_height'], right_knee_height=right_leg['knee_height'])
+                            left_knee_height=left_leg['knee_height'], right_knee_height=right_leg['knee_height'], teaching=self.gait.teaching)
         
-        self.action_mask = mask(self.action_space)
-        self.action_mask[0] = [1, 0, 0]
-        self.gait.action_mask = self.action_mask
-        self.training_env.env_method('set_infos', self.gait.action_mask)
+        self.action_mask = self.gait.action_mask
+        #self.action_mask = mask(self.action_space)
+        #self.action_mask[0] = [1, 0, 0]
+        #self.gait.action_mask = self.action_mask
+        #self.training_env.env_method('set_infos', self.gait.action_mask)
         self.training_env.env_method('set_state_machine', self.gait) # Pass state machine to environment.
         self.gait.num_timesteps = self.num_timesteps
             
@@ -263,15 +332,29 @@ class ActionMaskCallback(BaseCallback):
         right_leg = {'side': 'right', 'contact': sim[0]['state'][13], 'position': sim[0]['legs'][1].position[0], 'hip_angle': sim[0]['state'][9], 'knee_angle': sim[0]['state'][11], 'hip_height': sim[0]['state'][27], 'knee_height': sim[0]['state'][25]}
         #print(left_leg, right_leg)
         #sys.exit()
+
+        # Read from Machine Teaching UI
+        
+        self.ui.event, self.ui.values = self.ui.window.read()
+        if self.ui.event == 'Cancel':
+            self.ui.window.close()
+        elif self.ui.event == 'Reset':
+           self.training_env.env_method('reset')
+        elif self.ui.event in (None, 'Submit'):
+           self.gait.teaching = self.translate_ui(self.ui.values) 
+        
         
         self.gait.move(action=sim[0]['action'], left_position=left_leg['position'], left_contact=left_leg['contact'], \
             right_position=right_leg['position'], right_contact=right_leg['contact'], \
                 left_hip_angle=left_leg['hip_angle'], left_knee_angle=left_leg['knee_angle'], \
                     right_hip_angle=right_leg['hip_angle'], right_knee_angle=right_leg['knee_angle'], \
                         left_hip_height=left_leg['hip_height'], right_hip_height=right_leg['hip_height'], \
-                            left_knee_height=left_leg['knee_height'], right_knee_height=right_leg['knee_height'])
-        #self.action_mask = self.gait.action_mask
-        self.training_env.env_method('set_infos', self.gait.action_mask)
+                            left_knee_height=left_leg['knee_height'], right_knee_height=right_leg['knee_height'], teaching=self.gait.teaching)
+        self.action_mask = self.gait.action_mask
+        #self.training_env.env_method('set_infos', self.gait.action_mask)
+        self.training_env.env_method('render')
+        if self.gait.terminal:
+            self.training_env.env_method('set_terminal', self.gait.terminal)
 
         return True
 
@@ -285,22 +368,24 @@ class ActionMaskCallback(BaseCallback):
         """
         This event is triggered before exiting the `learn()` method.
         """
+        """
         self.action_mask = self.gait.action_mask = []
         self.training_env.env_method('set_infos', self.gait.action_mask)
         if self.gait.state != 'lift_leg':
             self.gait.reset()
         print('training end: ', self.gait.state)
-        
+        """
         pass
 
 # Callbacks for the Brains
 callback = ActionMaskCallback()
   
-control_brain = A2C(MlpPolicy, env, verbose=2) # PPO2 is the other option: tensorboard_log="walker/", nminibatches=1
-control_brain.learn(250000, callback=callback)
+brain = PPO2(MlpPolicy, env, verbose=2) # A2C is the other option: tensorboard_log="walker/", nminibatches=1 , tensorboard_log="walker2/"
+brain.learn(250000, callback=callback)
 
+
+model.save("expert_model")
 """
-# model.save("expert_model")
 # Enjoy trained agent
 
 for _ in range(25):
@@ -315,3 +400,4 @@ for _ in range(25):
             action_masks.append(env_action_mask)
         env.render()
 """
+

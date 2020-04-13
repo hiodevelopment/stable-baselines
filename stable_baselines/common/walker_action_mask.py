@@ -158,6 +158,7 @@ class BipedalWalker(gym.Env, EzPickle):
         self.valid_actions = []
         self.state_machine = None
         self.reset()
+        self.terminal = False
         self.counter = 0
         #print('env init', len(self.valid_actions[0]), len(self.valid_actions[1]), len(self.valid_actions[2]), len(self.valid_actions[3]))
 
@@ -174,6 +175,9 @@ class BipedalWalker(gym.Env, EzPickle):
 
     def set_state_machine(self, machine):
         self.state_machine = machine
+
+    def set_terminal(self, terminal):
+        self.terminal = terminal
 
     def _destroy(self):
         if not self.terrain: return
@@ -319,6 +323,7 @@ class BipedalWalker(gym.Env, EzPickle):
     def reset(self):
         self.valid_actions = mask(self.action_space)
         self.valid_actions[0] = [1, 0, 0]
+        self.terminal = False
         self._destroy()
         self.world.contactListener_bug_workaround = ContactDetector(self)
         self.world.contactListener = self.world.contactListener_bug_workaround
@@ -409,7 +414,11 @@ class BipedalWalker(gym.Env, EzPickle):
         if self.state_machine is not None and self.state_machine.state != 'lift_leg':
             self.state_machine.reset() # reset the state of the state machine. 
             self.state_machine.num_timesteps = 0 # reset the iteration counter. 
-            print('reset ', self.state_machine.num_timesteps)
+            self.state_machine.swinging_leg = 'right'
+            #print('reset ', self.state_machine.num_timesteps)
+        elif self.state_machine is not None:
+            self.state_machine.num_timesteps = 0 # reset the iteration counter.
+            #print('reset ', self.state_machine.num_timesteps)
         #print('env reset', self.valid_actions)
         return self.step(np.array([0,0,0,0]))[0]
 
@@ -453,7 +462,7 @@ class BipedalWalker(gym.Env, EzPickle):
     def step(self, masked_action):
         #self.hull.ApplyForceToCenter((0, 20), True) -- Uncomment this to receive a bit of stability help
 
-        #print('in step', self.valid_actions)
+        #print('in step', self.valid_actions[1][0])
 
         left_hip = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
         left_knee = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
@@ -519,7 +528,7 @@ class BipedalWalker(gym.Env, EzPickle):
 
         shaping  = 130*pos[0]/SCALE   # moving forward is a way to receive reward (normalized to get 300 on completion)
         shaping -= 5.0*abs(state[0])  # keep head straight, other than that and falling, any behavior is unpunished
-
+        #print('hull angle: ', state[0])
         reward = 0
         if self.prev_shaping is not None:
             reward = shaping - self.prev_shaping
@@ -530,16 +539,18 @@ class BipedalWalker(gym.Env, EzPickle):
             # normalized to about -50.0 using heuristic, more optimal agent should spend less
 
         done = False
-        if self.game_over or pos[0] < 0:
+        if self.game_over or pos[0] < 0:  #  or state[0] > 0.6
             reward = -100
             done   = True
         if pos[0] > (TERRAIN_LENGTH-TERRAIN_GRASS)*TERRAIN_STEP:
             done   = True
         if self.counter > 75:
             done = True
+        if self.terminal:
+            done = True
 
         self.state = state
-        self.render()
+        #self.render()
         self.counter += 1
         #print('set action mask in env')
         return np.array(state), reward, done, {'action_mask': self.valid_actions}
@@ -594,6 +605,57 @@ class BipedalWalker(gym.Env, EzPickle):
         self.viewer.draw_polyline(f + [f[0]], color=(0,0,0), linewidth=2 )
 
         return self.viewer.render(return_rgb_array = mode=='rgb_array')
+
+    # Modified openai gym rendering to support this.  Unused for now. 
+    def image_data(self, mode='human'):
+        from gym.envs.classic_control import rendering
+        if self.viewer is None:
+            self.viewer = rendering.Viewer(VIEWPORT_W, VIEWPORT_H)
+        self.viewer.set_bounds(self.scroll, VIEWPORT_W/SCALE + self.scroll, 0, VIEWPORT_H/SCALE)
+
+        self.viewer.draw_polygon( [
+            (self.scroll,                  0),
+            (self.scroll+VIEWPORT_W/SCALE, 0),
+            (self.scroll+VIEWPORT_W/SCALE, VIEWPORT_H/SCALE),
+            (self.scroll,                  VIEWPORT_H/SCALE),
+            ], color=(0.9, 0.9, 1.0) )
+        for poly,x1,x2 in self.cloud_poly:
+            if x2 < self.scroll/2: continue
+            if x1 > self.scroll/2 + VIEWPORT_W/SCALE: continue
+            self.viewer.draw_polygon( [(p[0]+self.scroll/2, p[1]) for p in poly], color=(1,1,1))
+        for poly, color in self.terrain_poly:
+            if poly[1][0] < self.scroll: continue
+            if poly[0][0] > self.scroll + VIEWPORT_W/SCALE: continue
+            self.viewer.draw_polygon(poly, color=color)
+
+        self.lidar_render = (self.lidar_render+1) % 100
+        i = self.lidar_render
+        if i < 2*len(self.lidar):
+            l = self.lidar[i] if i < len(self.lidar) else self.lidar[len(self.lidar)-i-1]
+            self.viewer.draw_polyline( [l.p1, l.p2], color=(1,0,0), linewidth=1 )
+
+        for obj in self.drawlist:
+            for f in obj.fixtures:
+                trans = f.body.transform
+                if type(f.shape) is circleShape:
+                    t = rendering.Transform(translation=trans*f.shape.pos)
+                    self.viewer.draw_circle(f.shape.radius, 30, color=obj.color1).add_attr(t)
+                    self.viewer.draw_circle(f.shape.radius, 30, color=obj.color2, filled=False, linewidth=2).add_attr(t)
+                else:
+                    path = [trans*v for v in f.shape.vertices]
+                    self.viewer.draw_polygon(path, color=obj.color1)
+                    path.append(path[0])
+                    self.viewer.draw_polyline(path, color=obj.color2, linewidth=2)
+
+        flagy1 = TERRAIN_HEIGHT
+        flagy2 = flagy1 + 50/SCALE
+        x = TERRAIN_STEP*3
+        self.viewer.draw_polyline( [(x, flagy1), (x, flagy2)], color=(0,0,0), linewidth=2 )
+        f = [(x, flagy2), (x, flagy2-10/SCALE), (x+25/SCALE, flagy2-5/SCALE)]
+        self.viewer.draw_polygon(f, color=(0.9,0.2,0) )
+        self.viewer.draw_polyline(f + [f[0]], color=(0,0,0), linewidth=2 )
+
+        return self.viewer.image_data()
 
     def close(self):
         if self.viewer is not None:

@@ -11,3 +11,11 @@ def create_dummy_action_mask(ac_spaces: MultiDiscrete):
                 mask = [mask] * size
         action_mask.append(mask)
     return action_mask
+
+
+#action_space = MultiDiscrete([3, 2, 2, 2, 2])
+#print(create_dummy_action_mask(action_space)[3][2][0][0])
+
+
+
+
