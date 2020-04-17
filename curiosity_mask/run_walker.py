@@ -2,28 +2,32 @@ import gym
 import numpy as np
 import imageio
 
-from stable_baselines import PPO2
+from gym.spaces import MultiDiscrete
+import stable_baselines.common.walker_action_mask as walker
+from stable_baselines import PPO2, A2C
 from stable_baselines.common.evaluation import evaluate_policy
 from stable_baselines.common.vec_env import DummyVecEnv
-import stable_baselines.common.vec_env.bipedal_heuristic_selector as bipedal
+from curiosity_mask.util import create_dummy_action_mask as mask
 
 # Create environment.
-env = DummyVecEnv([bipedal.BipedalWalker])
+env = DummyVecEnv([walker.BipedalWalker])
 
-# Initialize and train agent.
-model = PPO2('MlpPolicy', env, verbose=1, tensorboard_log="./logs/")
-model.learn(total_timesteps=100000000, tb_log_name="Walker PPO2 - Discrete Curiosity Mask, Run 1")
+brain = PPO2.load("expert_model")
 
 # Evaluate the agent.
-mean_reward, n_steps = evaluate_policy(model, model.get_env(), n_eval_episodes=1)
-print(mean_reward)
+#mean_reward, n_steps = evaluate_policy(brain, brain.get_env(), n_eval_episodes=1)
+#print(mean_reward)
+
+action_space = MultiDiscrete([3, 21, 21, 21, 21])
+action_mask = mask(action_space)
 
 # Predict from the trained agent and record animated gif. 
-images = []
-obs = env.reset()
+#images = []
+obs, done, action_masks = env.reset(), [False], []
 for i in range(1000):
-    action, _states = model.predict(obs)
+    action, _states = brain.predict(obs, action_mask=action_masks)
     obs, rewards, dones, info = env.step(action)
-    images.append(env.render(mode='rgb_array'))
+    env.render()
+    #images.append(env.render(mode='rgb_array'))
 
-imageio.mimsave('./logs/walker-ppo2-curiosity-mask.gif', images, fps=29)
+#imageio.mimsave('./logs/walker-ppo2-curiosity-mask.gif', images, fps=29)

@@ -411,13 +411,15 @@ class BipedalWalker(gym.Env, EzPickle):
 
         self.action = []
         self.state = {}
-        if self.state_machine is not None and self.state_machine.state != 'lift_leg':
+        if self.state_machine is not None and self.state_machine.state != 'start':
             self.state_machine.reset() # reset the state of the state machine. 
             self.state_machine.num_timesteps = 0 # reset the iteration counter. 
             self.state_machine.swinging_leg = 'right'
+            self.state_machine.start = True
             #print('reset ', self.state_machine.num_timesteps)
         elif self.state_machine is not None:
             self.state_machine.num_timesteps = 0 # reset the iteration counter.
+            self.state_machine.swinging_leg = 'right'
             #print('reset ', self.state_machine.num_timesteps)
         #print('env reset', self.valid_actions)
         return self.step(np.array([0,0,0,0]))[0]
@@ -460,7 +462,7 @@ class BipedalWalker(gym.Env, EzPickle):
         return state['right_leg_contact'] #state
     
     def step(self, masked_action):
-        #self.hull.ApplyForceToCenter((0, 20), True) -- Uncomment this to receive a bit of stability help
+        self.hull.ApplyForceToCenter((0, 20), True) # Uncomment this to receive a bit of stability help
 
         #print('in step', self.valid_actions[1][0])
 
@@ -473,7 +475,7 @@ class BipedalWalker(gym.Env, EzPickle):
             action = [left_hip[masked_action[0]], left_knee[masked_action[1]], right_hip[masked_action[2]], right_knee[masked_action[3]]]
         else:
             action = [left_hip[masked_action[1]], left_knee[masked_action[2]], right_hip[masked_action[3]], right_knee[masked_action[4]]]
-        print('in step, action:', action)
+        #print('in step, action:', action)
 
         self.action = masked_action
 
@@ -542,12 +544,12 @@ class BipedalWalker(gym.Env, EzPickle):
             # normalized to about -50.0 using heuristic, more optimal agent should spend less
 
         done = False
-        if self.game_over or pos[0] < 0:  #  or state[0] > 0.6
+        if self.game_over or pos[0] < 0: 
             reward = -100
             done   = True
         if pos[0] > (TERRAIN_LENGTH-TERRAIN_GRASS)*TERRAIN_STEP:
             done   = True
-        if self.counter > 75:
+        if self.counter > 75: #  or state[0] > 0.6
             done = True
         if self.terminal:
             done = True
