@@ -531,28 +531,57 @@ class BipedalWalker(gym.Env, EzPickle):
 
         self.scroll = pos.x - VIEWPORT_W/SCALE/5
 
-        shaping  = 130*pos[0]/SCALE   # moving forward is a way to receive reward (normalized to get 300 on completion)
-        shaping -= 5.0*abs(state[0])  # keep head straight, other than that and falling, any behavior is unpunished
+        shaping = 0 #130*pos[0]/SCALE   # moving forward is a way to receive reward (normalized to get 300 on completion)
+        #shaping -= 5.0*abs(state[0])  # keep head straight, other than that and falling, any behavior is unpunished
         #print('hull angle: ', state[0])
         reward = 0
         if self.prev_shaping is not None:
             reward = shaping - self.prev_shaping
         self.prev_shaping = shaping
 
+        if self.state_machine is not None:
+            #print(self.state_machine.step_flag)
+            if self.state_machine.num_timesteps <= 1 and self.state_machine.step_flag:  # only give out the position reward on taking a step.
+                reward += 10*pos[0]*(self.state_machine.step_count+1) # Move forward, get more reward for step progress than other progress
+                #print('giving_reward')
+                self.state_machine.step_flag = False
+                #reward += 100*self.state_machine.step_count/(self.state_machine.num_timesteps+1)  # just take steps
+                pass
+            #print('step reward: ', reward, self.state_machine.num_timesteps)
+
+        """
         for a in action:
             reward -= 0.00035 * MOTORS_TORQUE * np.clip(np.abs(a), 0, 1)
             # normalized to about -50.0 using heuristic, more optimal agent should spend less
-
+        """
         done = False
         if self.game_over or pos[0] < 0: 
             reward = -100
             done   = True
         if pos[0] > (TERRAIN_LENGTH-TERRAIN_GRASS)*TERRAIN_STEP:
             done   = True
-        if self.counter > 75: #  or state[0] > 0.6
+        """
+        if state[0] > 0.8:
+            reward = -2000/(self.counter+1)
             done = True
-        if self.terminal:
-            done = True
+            print('terminal condition: hull angle too steep')
+        """
+        if self.terminal or state[0] > 0.8 or self.counter > 75 or abs(state[4] - state[9]) > 0.75 or (state[8] ==0 and state[13] == 0):
+            if abs(state[4] - state[9]) > 0.75 and (self.state_machine.state == 'start' or self.state_machine.state == 'lift_leg' or self.state_machine == 'plant_leg'):
+                #reward -= 10/(self.state_machine.num_timesteps+1)
+                done = True
+                print('terminal condition: legs too far apart ', pos[0], reward)
+            if abs(state[4] - state[9]) > 1 and self.state_machine.state == 'switch_leg':
+                #reward -= 10/(self.state_machine.num_timesteps+1)
+                done = True
+                print('terminal condition: legs too far apart ', pos[0], reward)
+            if state[8] ==0 and state[13] == 0:
+                reward -= 50 # Only reward success
+                done = True
+                print('terminal condition: neither leg in contact with the ground ', pos[0], reward)
+            if state[0] > 0.8:
+                done = True
+                print('terminal condition: hull angle too steep ', pos[0], reward)
 
         self.state = state
         #self.render()
