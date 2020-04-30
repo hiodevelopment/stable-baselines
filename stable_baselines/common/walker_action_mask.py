@@ -598,8 +598,8 @@ class BipedalWalker(gym.Env, EzPickle):
             reward = -50
             print('terminal condition: hull angle too steep ', pos[0], reward)
         
-       # More difficult lesson 2, after learning to get to the second step. 
-       if self.state_machine is not None: 
+        # More difficult lesson 2, after learning to get to the second step. 
+        if self.state_machine is not None: 
             if self.state_machine.teaching['radio-2']:
                 if state[0] > 0.5:
                     done = True
@@ -622,7 +622,7 @@ class BipedalWalker(gym.Env, EzPickle):
                             done = True
                             reward -= 50
                             print('terminal condition: no forward progress ', pos[0], reward)
-                            
+
         # Is the swinging leg moving forward during all but the vault over the planted leg. 
         if self.state_machine is not None: 
             if self.state_machine.swinging_leg == 'left':
