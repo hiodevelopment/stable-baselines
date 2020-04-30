@@ -9,6 +9,7 @@ import gym
 from gym.spaces import Discrete, MultiDiscrete
 from gym.utils import colorize, seeding, EzPickle
 
+from collections import deque
 from curiosity_mask.util import create_dummy_action_mask as mask
 
 # This is simple 4-joints walker robot environment.
@@ -160,6 +161,7 @@ class BipedalWalker(gym.Env, EzPickle):
         self.reset()
         self.terminal = False
         self.counter = 0
+    
         #print('env init', len(self.valid_actions[0]), len(self.valid_actions[1]), len(self.valid_actions[2]), len(self.valid_actions[3]))
 
     def seed(self, seed=None):
@@ -411,11 +413,16 @@ class BipedalWalker(gym.Env, EzPickle):
 
         self.action = []
         self.state = {}
+        empty_observation = [init_x,init_x,init_x,init_x,init_x]
+        self.position_history = deque(empty_observation)
+        self.state_history = deque([None, None, None, None, None])
+        self.leg_history = deque([(self.legs[0].position[0], self.legs[2].position[0]), (self.legs[0].position[0], self.legs[2].position[0]), (self.legs[0].position[0], self.legs[2].position[0]), (self.legs[0].position[0], self.legs[2].position[0]), (self.legs[0].position[0], self.legs[2].position[0])])
         if self.state_machine is not None and self.state_machine.state != 'start':
             self.state_machine.reset() # reset the state of the state machine. 
             self.state_machine.num_timesteps = 0 # reset the iteration counter. 
             self.state_machine.swinging_leg = 'right'
             self.state_machine.start = True
+            self.state_machine.action_mask[0] = [1, 0, 0]
             #print('reset ', self.state_machine.num_timesteps)
         elif self.state_machine is not None:
             self.state_machine.num_timesteps = 0 # reset the iteration counter.
@@ -539,10 +546,25 @@ class BipedalWalker(gym.Env, EzPickle):
             reward = shaping - self.prev_shaping
         self.prev_shaping = shaping
 
+        # Step reward for swinging leg position. 
+        if self.state_machine is not None:
+            if self.state_machine.swinging_leg == 'left':
+                reward += self.legs[2].position[0]
+            if self.state_machine.swinging_leg == 'right':
+                reward += self.legs[0].position[0]
+
+        # Reward for taking a step
         if self.state_machine is not None:
             #print(self.state_machine.step_flag)
             if self.state_machine.num_timesteps <= 1 and self.state_machine.step_flag:  # only give out the position reward on taking a step.
-                reward += 10*pos[0]*(self.state_machine.step_count+1) # Move forward, get more reward for step progress than other progress
+                if self.state_machine.swinging_leg == 'left':
+                    reward += 10*self.legs[2].position[0]*(self.state_machine.step_count+1) # Move forward, get more reward for step progress than other progress
+                    print('left swinging leg reward: ', self.legs[0].position[0], self.legs[2].position[0], reward)
+                if self.state_machine.swinging_leg == 'right':
+                    reward += 10*self.legs[0].position[0]*(self.state_machine.step_count+1) # Move forward, get more reward for step progress than other progress
+                    print('right swinging leg reward: ', self.legs[2].position[0], reward)
+                else:
+                    reward += 10*pos[0]*(self.state_machine.step_count+1) # Move forward, get more reward for step progress than other progress
                 #print('giving_reward')
                 self.state_machine.step_flag = False
                 #reward += 100*self.state_machine.step_count/(self.state_machine.num_timesteps+1)  # just take steps
@@ -560,31 +582,71 @@ class BipedalWalker(gym.Env, EzPickle):
             done   = True
         if pos[0] > (TERRAIN_LENGTH-TERRAIN_GRASS)*TERRAIN_STEP:
             done   = True
-        """
-        if state[0] > 0.8:
-            reward = -2000/(self.counter+1)
+        
+        if abs(state[4] - state[9]) > 0.75 and (self.state_machine.state == 'start' or self.state_machine.state == 'lift_leg' or self.state_machine == 'plant_leg'):
+            #reward -= 10/(self.state_machine.num_timesteps+1)
             done = True
-            print('terminal condition: hull angle too steep')
-        """
-        if self.terminal or state[0] > 0.8 or self.counter > 75 or abs(state[4] - state[9]) > 0.75 or (state[8] ==0 and state[13] == 0):
-            if abs(state[4] - state[9]) > 0.75 and (self.state_machine.state == 'start' or self.state_machine.state == 'lift_leg' or self.state_machine == 'plant_leg'):
-                #reward -= 10/(self.state_machine.num_timesteps+1)
-                done = True
-                print('terminal condition: legs too far apart ', pos[0], reward)
-            if abs(state[4] - state[9]) > 1 and self.state_machine.state == 'switch_leg':
-                #reward -= 10/(self.state_machine.num_timesteps+1)
-                done = True
-                print('terminal condition: legs too far apart ', pos[0], reward)
-            if state[8] ==0 and state[13] == 0:
-                reward -= 50 # Only reward success
-                done = True
-                print('terminal condition: neither leg in contact with the ground ', pos[0], reward)
-            if state[0] > 0.8:
-                done = True
-                print('terminal condition: hull angle too steep ', pos[0], reward)
+            reward -= 50
+            print('terminal condition: legs too far apart ', pos[0], reward)
+        if abs(state[4] - state[9]) > 1 and self.state_machine.state == 'switch_leg':
+            #reward -= 10/(self.state_machine.num_timesteps+1)
+            done = True
+            reward -= 50
+            print('terminal condition: legs too far apart ', pos[0], reward)
+        if state[0] > 0.8:
+            done = True
+            reward = -50
+            print('terminal condition: hull angle too steep ', pos[0], reward)
+        
+       # More difficult lesson 2, after learning to get to the second step. 
+       if self.state_machine is not None: 
+            if self.state_machine.teaching['radio-2']:
+                if state[0] > 0.5:
+                    done = True
+                    reward = -50
+                    print('terminal condition: hull angle too steep ', pos[0], reward)
+       
+                if state[8] ==0 and state[13] == 0:
+                    if self.state_machine.swinging_leg == 'left':
+                        done = True
+                        reward -= 50/self.legs[0].position[0] # Only reward success
+                        print('terminal condition: neither leg in contact with the ground ', self.legs[0].position[0], reward)
+                    if self.state_machine.swinging_leg == 'right':
+                        done = True
+                        reward -= 50/self.legs[2].position[0] # Only reward success
+                        print('terminal condition: neither leg in contact with the ground ', self.legs[2].position[0], reward)
+             
+                if pos[0] < self.position_history[0]:
+                    if self.state_machine is not None:
+                        if self.state_machine.num_timesteps <= 1 and not self.state_machine.step_flag:  # don't enforce terminal when swinging leg plants. 
+                            done = True
+                            reward -= 50
+                            print('terminal condition: no forward progress ', pos[0], reward)
+                            
+        # Is the swinging leg moving forward during all but the vault over the planted leg. 
+        if self.state_machine is not None: 
+            if self.state_machine.swinging_leg == 'left':
+                if self.legs[0].position[0] < self.leg_history[0][0]:
+                    done = True
+                    reward -= 50
+                    print('terminal condition: swinging leg not moving forward ', self.leg_history[0][0], self.legs[0].position[0], reward)
+            if self.state_machine.swinging_leg == 'right':
+                if self.legs[2].position[0] < self.leg_history[0][1]:
+                    done = True
+                    reward -= 50
+                    print('terminal condition: swinging leg not moving forward ', self.leg_history[0][1], self.legs[2].position[0], reward)
+        
 
         self.state = state
-        #self.render()
+        self.leg_history.appendleft((self.legs[0].position[0], self.legs[2].position[0]))
+        self.leg_history.pop()
+
+        self.position_history.appendleft(pos[0])
+        self.position_history.pop()
+
+        self.state_history.appendleft(state)
+        self.state_history.pop()
+        self.render()
         self.counter += 1
         #print('set action mask in env')
         return np.array(state), reward, done, {'action_mask': self.valid_actions}

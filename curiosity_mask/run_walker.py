@@ -12,7 +12,7 @@ from curiosity_mask.util import create_dummy_action_mask as mask
 # Create environment.
 env = DummyVecEnv([walker.BipedalWalker])
 
-brain = PPO2.load("expert_model")
+brain = PPO2.load("position_reward_brain")
 
 # Evaluate the agent.
 #mean_reward, n_steps = evaluate_policy(brain, brain.get_env(), n_eval_episodes=1)
