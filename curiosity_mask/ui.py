@@ -39,13 +39,14 @@ class UI():
                             sg.Text('Planted Knee (Max)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=1, key='slider3-4b')] 
                             ]
 
-        layout = [[sg.Frame('Gait Phase 1: Lift Swinging Leg', teach_gait1, font='Any 12')],
+        layout = [ [sg.StatusBar('Gait Phase: Waiting to Start Training.', key='teaching-button-1')],
+                [sg.Frame('Gait Phase 1: Lift Swinging Leg', teach_gait1, font='Any 12')],
                 [sg.Frame('Gait Phase 2: Plant Swinging Leg', teach_gait2, font='Any 12')],
                 [sg.Frame('Gait Phase 3: Switch Legs, Swing Leg',  teach_gait3,
                             font='Any 12')],
                 [sg.Radio('Lesson 1', "lessons", key='radio-1', default=True),
-    sg.Radio('Lesson 2', "lessons", key='radio-2')],
-                [sg.Submit(), sg.Button('Reset'), sg.Cancel()]]
+    sg.Radio('Lesson 2', "lessons", key='radio-2'), sg.Checkbox('Push Swinging Leg Down', key='push-leg')],
+                [sg.Submit(), sg.Button('Reset'), sg.Cancel(), sg.Button('Plant Leg')]]
 
         sg.set_options(text_justification='left')
 
