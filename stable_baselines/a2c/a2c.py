@@ -355,11 +355,13 @@ class A2CRunner(AbstractEnvRunner):
                 if (self.callback.on_step() is True or self.callback.on_training_start() is True) and self.callback.action_mask is not None:
                     self.action_masks.append(self.callback.action_mask)
                     #print('in ppo callbacks', self.callback.action_mask[1][0])
+                """ # This seems to be causing the on_step callback to be called twice. 
                 # Abort training early
                 if self.callback.on_step() is False:
                     self.continue_training = False
                     # Return dummy values
                     return [None] * 9
+                """
             actions, values, states, _ = self.model.step(self.obs, self.states, self.dones, action_mask=self.action_masks)
             mb_obs.append(np.copy(self.obs))
             mb_actions.append(actions)

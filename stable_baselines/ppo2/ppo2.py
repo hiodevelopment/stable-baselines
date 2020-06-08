@@ -477,12 +477,15 @@ class Runner(AbstractEnvRunner):
                     self.action_masks.append(self.callback.action_mask)
                     #print('in ppo callbacks', self.callback.action_mask[1][0])
                 # Abort training early
+                """ # This seemed to be calling a second on_step callback for each iteration. 
                 if self.callback.on_step() is False:
                     self.continue_training = False
                     # Return dummy values
                     return [None] * 9
+                """
             actions, values, self.states, neglogpacs = self.model.step(self.obs, self.states, self.dones,
                                                                        action_mask=self.action_masks)
+            #print('in ppo: ', actions, self.dones)
             mb_obs.append(self.obs.copy())
             mb_actions.append(actions)
             mb_values.append(values)

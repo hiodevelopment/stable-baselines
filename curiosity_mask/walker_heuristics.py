@@ -348,3 +348,316 @@
         self.retract(orchestration)
         print('Gait Transition -> Phase 1')
         pass
+
+
+###################
+
+"""
+    def set_mask_start(self, event): 
+        
+        gait = 1
+        teaching = self.teaching
+
+        # Flip bits to teach the strategy for this gait. (Left Hip, Left Knee, Right, Hip, Right Knee)
+        if self.swinging_leg == 'left':
+            self.action_mask[1][gait-1] = [1 if (action_index >= teaching['slider1-1a'] and action_index <= teaching['slider1-1b']) else 0 for action_index in range(21)] # Positive hip motion for planted leg.
+            for joint1_value in range(21):
+                self.action_mask[2][gait-1][joint1_value] = [1 if (action_index >= teaching['slider1-2a'] and action_index <= teaching['slider1-2b']) else 0 for action_index in range(21)] # Negative hip motion for swinging leg.
+            for joint1_value in range(21):
+                    for joint2_value in range(21):
+                        self.action_mask[3][gait-1][joint1_value][joint2_value] = [1 if (action_index >= teaching['slider1-3a'] and action_index <= teaching['slider1-3b']) else 0 for action_index in range(21)] # Slight Positive knee motion for planted leg.
+            for joint1_value in range(21):
+                for joint2_value in range(21):
+                    for joint3_value in range(21):
+                        self.action_mask[4][gait-1][joint1_value][joint2_value][joint3_value] = [1 if (action_index >= teaching['slider1-4a'] and action_index <= teaching['slider1-4b']) else 0 for action_index in range(21)] # Negative knee motion for swinging leg.
+
+        if self.swinging_leg == 'right':
+            self.action_mask[1][gait-1] = [1 if (action_index >= teaching['slider1-3a'] and action_index <= teaching['slider1-3b']) else 0 for action_index in range(21)] # Positive hip motion for planted leg.
+            for joint1_value in range(21):
+                self.action_mask[2][gait-1][joint1_value] = [1 if (action_index >= teaching['slider1-4a'] and action_index <= teaching['slider1-4b']) else 0 for action_index in range(21)] # Negative hip motion for swinging leg.
+            for joint1_value in range(21):
+                    for joint2_value in range(21):
+                        self.action_mask[3][gait-1][joint1_value][joint2_value] = [1 if (action_index >= 20 and action_index <= 20) else 0 for action_index in range(21)] # Slight Positive knee motion for planted leg.
+            for joint1_value in range(21):
+                for joint2_value in range(21):
+                    for joint3_value in range(21):
+                        self.action_mask[4][gait-1][joint1_value][joint2_value][joint3_value] = [1 if (action_index >= teaching['slider1-2a'] and action_index <= teaching['slider1-2b']) else 0 for action_index in range(21)] # Negative knee motion for swinging leg.
+        pass
+
+    def set_mask_gait_1(self, event): 
+        
+        gait = 1
+        teaching = self.teaching
+        
+        # Flip bits to teach this gait strategy. (Left Hip, Left Knee, Right, Hip, Right Knee)
+        if self.swinging_leg == 'left':
+
+            self.action_mask[1][gait-1] = [1 if (action_index >= teaching['slider1-1a'] and action_index <= teaching['slider1-1b']) else 0 for action_index in range(21)] # Positive hip motion for planted leg.
+            for joint1_value in range(21):
+                self.action_mask[2][gait-1][joint1_value] = [1 if (action_index >= teaching['slider1-2a'] and action_index <= teaching['slider1-2b']) else 0 for action_index in range(21)] # Negative hip motion for swinging leg.
+            for joint1_value in range(21):
+                    for joint2_value in range(21):
+                        self.action_mask[3][gait-1][joint1_value][joint2_value] = [1 if (action_index >= teaching['slider1-3a'] and action_index <= teaching['slider1-3b']) else 0 for action_index in range(21)] # Slight Positive knee motion for planted leg.
+            for joint1_value in range(21):
+                for joint2_value in range(21):
+                    for joint3_value in range(21):
+                        self.action_mask[4][gait-1][joint1_value][joint2_value][joint3_value] = [1 if (action_index >= teaching['slider1-4a'] and action_index <= teaching['slider1-4b']) else 0 for action_index in range(21)] # Negative knee motion for swinging leg.
+            
+        if self.swinging_leg == 'right':
+
+            self.action_mask[1][gait-1] = [1 if (action_index >= teaching['slider1-3a'] and action_index <= teaching['slider1-3b']) else 0 for action_index in range(21)] # Positive hip motion for planted leg.
+            for joint1_value in range(21):
+                self.action_mask[2][gait-1][joint1_value] = [1 if (action_index >= teaching['slider1-4a'] and action_index <= teaching['slider1-4b']) else 0 for action_index in range(21)] # Negative hip motion for swinging leg.
+            for joint1_value in range(21):
+                    for joint2_value in range(21):
+                        self.action_mask[3][gait-1][joint1_value][joint2_value] = [1 if (action_index >= teaching['slider1-1a'] and action_index <= teaching['slider1-1b']) else 0 for action_index in range(21)] # Slight Positive knee motion for planted leg.
+            for joint1_value in range(21):
+                for joint2_value in range(21):
+                    for joint3_value in range(21):
+                        self.action_mask[4][gait-1][joint1_value][joint2_value][joint3_value] = [1 if (action_index >= teaching['slider1-2a'] and action_index <= teaching['slider1-2b']) else 0 for action_index in range(21)] # Negative knee motion for swinging leg.
+            
+
+    def set_mask_gait_2(self, event): 
+        
+        gait = 2
+        teaching = event.kwargs.get('teaching')
+
+        # Flip bits to teach this gait strategy. (Left Hip, Left Knee, Right, Hip, Right Knee)
+        if self.swinging_leg == 'left':
+            self.action_mask[1][gait-1] = [1 if (action_index >= teaching['slider2-1a'] and action_index <= teaching['slider2-1b']) else 0 for action_index in range(21)] # Positive hip motion for planted leg.
+            for joint1_value in range(21):
+                self.action_mask[2][gait-1][joint1_value] = [1 if (action_index >= teaching['slider2-2a'] and action_index <= teaching['slider2-2b']) else 0 for action_index in range(21)] # Negative hip motion for swinging leg.
+            for joint1_value in range(21):
+                    for joint2_value in range(21):
+                        self.action_mask[3][gait-1][joint1_value][joint2_value] = [1 if (action_index >= teaching['slider2-3a'] and action_index <= teaching['slider2-3b']) else 0 for action_index in range(21)] # Slight Positive knee motion for planted leg.
+            for joint1_value in range(21):
+                for joint2_value in range(21):
+                    for joint3_value in range(21):
+                        self.action_mask[4][gait-1][joint1_value][joint2_value][joint3_value] = [1 if (action_index >= teaching['slider2-4a'] and action_index <= teaching['slider2-4b']) else 0 for action_index in range(21)] # Negative knee motion for swinging leg.
+            
+        if self.swinging_leg == 'right':
+            self.action_mask[1][gait-1] = [1 if (action_index >= teaching['slider2-3a'] and action_index <= teaching['slider2-3b']) else 0 for action_index in range(21)] # Positive hip motion for planted leg.
+            for joint1_value in range(21):
+                self.action_mask[2][gait-1][joint1_value] = [1 if (action_index >= teaching['slider2-4a'] and action_index <= teaching['slider2-4b']) else 0 for action_index in range(21)] # Negative hip motion for swinging leg.
+            for joint1_value in range(21):
+                    for joint2_value in range(21):
+                        self.action_mask[3][gait-1][joint1_value][joint2_value] = [1 if (action_index >= teaching['slider2-1a'] and action_index <= teaching['slider2-1b']) else 0 for action_index in range(21)] # Slight Positive knee motion for planted leg.
+            for joint1_value in range(21):
+                for joint2_value in range(21):
+                    for joint3_value in range(21):
+                        self.action_mask[4][gait-1][joint1_value][joint2_value][joint3_value] = [1 if (action_index >= teaching['slider2-2a'] and action_index <= teaching['slider2-2b']) else 0 for action_index in range(21)] # Negative knee motion for swinging leg.
+        pass
+
+    def set_mask_gait_3(self, event): 
+        
+        gait = 3
+        teaching = event.kwargs.get('teaching')
+
+        # Flip bits for to teach this gait strategy.  (Left Hip, Left Knee, Right, Hip, Right Knee)
+        if self.swinging_leg == 'left':
+            self.action_mask[1][gait-1] = [1 if (action_index >= teaching['slider3-1a'] and action_index <= teaching['slider3-1b']) else 0 for action_index in range(21)] # Positive hip motion for planted leg.
+            for joint1_value in range(21):
+                self.action_mask[2][gait-1][joint1_value] = [1 if (action_index >= teaching['slider3-2a'] and action_index <= teaching['slider3-2b']) else 0 for action_index in range(21)] # Negative hip motion for swinging leg.
+            for joint1_value in range(21):
+                    for joint2_value in range(21):
+                        self.action_mask[3][gait-1][joint1_value][joint2_value] = [1 if (action_index >= teaching['slider3-3a'] and action_index <= teaching['slider3-3b']) else 0 for action_index in range(21)] # Slight Positive knee motion for planted leg.
+            for joint1_value in range(21):
+                for joint2_value in range(21):
+                    for joint3_value in range(21):
+                        self.action_mask[4][gait-1][joint1_value][joint2_value][joint3_value] = [1 if (action_index >= teaching['slider3-4a'] and action_index <= teaching['slider3-4b']) else 0 for action_index in range(21)] # Negative knee motion for swinging leg.
+        
+        if self.swinging_leg == 'right':
+            self.action_mask[1][gait-1] = [1 if (action_index >= teaching['slider3-3a'] and action_index <= teaching['slider3-3b']) else 0 for action_index in range(21)] # Positive hip motion for planted leg.
+            for joint1_value in range(21):
+                self.action_mask[2][gait-1][joint1_value] = [1 if (action_index >= teaching['slider3-4a'] and action_index <= teaching['slider3-4b']) else 0 for action_index in range(21)] # Negative hip motion for swinging leg.
+            for joint1_value in range(21):
+                    for joint2_value in range(21):
+                        self.action_mask[3][gait-1][joint1_value][joint2_value] = [1 if (action_index >= teaching['slider3-1a'] and action_index <= teaching['slider3-1b']) else 0 for action_index in range(21)] # Slight Positive knee motion for planted leg.
+            for joint1_value in range(21):
+                for joint2_value in range(21):
+                    for joint3_value in range(21):
+                        self.action_mask[4][gait-1][joint1_value][joint2_value][joint3_value] = [1 if (action_index >= teaching['slider3-2a'] and action_index <= teaching['slider3-2b']) else 0 for action_index in range(21)] # Negative knee motion for swinging leg.
+        pass
+    """
+
+
+    ##### Options Framework Working for everything except resettable simulator #####
+
+    def set_mask_filter(self, event):
+
+        if self.options_framework and self.num_timesteps > 0:
+            
+            # Apply the options framework.
+            left_hip = left_knee = right_hip = right_knee = range(21)
+
+            total_possible_actions = []
+            possible_actions = []
+            possible_states = []
+
+            if event.kwargs.get('action') is not None: # and len(event.kwargs.get('action')) == 5:
+                gait = event.kwargs.get('action')[0]
+            else:
+                gait = 0
+
+            teaching = self.teaching # event.kwargs.get('teaching')
+
+            # Flip bits to teach the strategy for this gait. (Left Hip, Left Knee, Right, Hip, Right Knee)
+            if self.swinging_leg == 'left':
+
+                ranges = {'left_hip': {'min': teaching['gait-1-swinging-hip-min'], 'max': teaching['gait-1-swinging-hip-max']},
+                        'left_knee': {'min': teaching['gait-1-swinging-knee-min'], 'max': teaching['gait-1-swinging-knee-max']}, 
+                        'right_hip': {'min': teaching['gait-1-planted-hip-min'], 'max': teaching['gait-1-planted-hip-max']}, 
+                        'right_knee': {'min': teaching['gait-1-planted-knee-min'], 'max': teaching['gait-1-planted-knee-max']}
+                    }
+
+            if self.swinging_leg == 'right':
+
+                ranges = {'left_hip': {'min': teaching['gait-1-planted-hip-min'], 'max': teaching['gait-1-planted-hip-max']},
+                    'left_knee': {'min': teaching['gait-1-planted-knee-min'], 'max': teaching['gait-1-planted-knee-max']}, 
+                    'right_hip': {'min': teaching['gait-1-swinging-hip-min'], 'max': teaching['gait-1-swinging-hip-max']}, 
+                    'right_knee': {'min': teaching['gait-1-swinging-knee-min'], 'max': teaching['gait-1-swinging-knee-max']}
+                }
+
+            #if self.num_timesteps == 0:
+            #    self.recorded_actions.append([0, 5, 11, 12, 0])
+            """
+            if np.all(event.kwargs.get('action')==0):
+                self.recorded_actions.append([10, 10, 10, 10])
+            else:
+                self.recorded_actions.append(event.kwargs.get('action'))
+            """
+            
+            if self.training_env is not None:
+                sim_env = copy.deepcopy(self.training_env.envs[0]) 
+            else: 
+                sim_env = copy.deepcopy(env.envs[0])
+
+            print('recorded actions: ', self.recorded_actions, round(sim_env.get_state()['state'][9], 4))
+            for action in self.recorded_actions:
+                replay_state, _, _, _ = sim_env.step(action)
+                print('replay: ', replay_state[9], round(self.training_env.envs[0].get_state()['state'][9], 4))
+                
+
+            #print(round(self.training_env.envs[0].get_state()['state'][9], 4))
+            
+            """
+            for x_index, x_value in enumerate(list(filter(lambda x: x >= ranges['left_hip']['min'] and x <= ranges['left_hip']['max'], left_hip))):
+                for y_index, y_value in enumerate(list(filter(lambda x: x >= ranges['left_knee']['min'] and x <= ranges['left_knee']['max'], left_knee))):
+                    for z_index, z_value in enumerate(list(filter(lambda x: x >= ranges['right_hip']['min'] and x <= ranges['right_hip']['max'], right_hip))):
+                        #for j_index, j_value in enumerate(list(filter(lambda x: x >= 0 and x <= 20, right_knee))):
+                        for j_index, j_value in enumerate(list(filter(lambda x: x >= ranges['right_knee']['min'] and x <= ranges['right_knee']['max'], right_knee))):
+            """
+            for left_hip_index in list(filter(lambda x: x >= ranges['left_hip']['min'] and x <= ranges['left_hip']['max'], left_hip)): # (range(ranges['left_hip']['min'], ranges['left_hip']['max'])):
+                for left_knee_index in list(filter(lambda x: x >= ranges['left_knee']['min'] and x <= ranges['left_knee']['max'], left_knee)): # range(ranges['left_knee']['min'], ranges['left_knee']['max']+1):
+                    for right_hip_index in list(filter(lambda x: x >= ranges['right_hip']['min'] and x <= ranges['right_hip']['max'], right_hip)): # range(ranges['right_hip']['min'], ranges['right_hip']['max']+1):
+                        for right_knee_index in list(filter(lambda x: x >= ranges['right_knee']['min'] and x <= ranges['right_knee']['max'], right_knee)): # range(ranges['right_knee']['min'], ranges['right_knee']['max']+1):
+                            #"""
+                            test_copy = None
+                            test_copy = copy.deepcopy(sim_env)
+                            
+                            """
+                            for action in self.recorded_actions:
+                                print('replay: ', round(test_copy.get_state()['state'][9], 4))
+                                test_copy.step(action)
+                            """
+                            #print('deep copy env: ', test_copy.state[4])  # <----
+
+                            #test_copy = copy.copy(self.training_env) #copy.deepcopy(self.training_env.envs[0])
+                            #print(test_copy, round(test_copy.legs[1].position[0], 4))
+                            total_possible_actions.append((left_hip_index, left_knee_index, right_hip_index, right_knee_index))
+                            #snapshot = self.snapshot
+                            if self.num_timesteps < 1:
+                                #possible_state = test_copy.simulate(10, 10, 10, 10)
+                                possible_state, _, _, _ = test_copy.step([0, 10, 10, 10, 10])
+                                print('Options Framework: ', [10, 10, 10, 10], event.kwargs.get('action'), possible_state[9], round(event.kwargs.get('right_hip_angle'), 4)) #test_copy.state[4], test_copy.state[8], test_copy.state[13], self.training_env.env_method('get_state')[0]['state'][8], self.training_env.env_method('get_state')[0]['state'][13])
+
+                            else: 
+                                #possible_state = test_copy.simulate(left_hip_index, left_knee_index, right_hip_index, right_knee_index)
+                                possible_state, _, _, _ = test_copy.step([gait, left_hip_index, left_knee_index, right_hip_index, right_knee_index])
+                                print('Options Framework: ', [left_hip_index, left_knee_index, right_hip_index, right_knee_index], event.kwargs.get('action'), possible_state[9], round(event.kwargs.get('right_hip_angle'), 4)) #test_copy.state[4], test_copy.state[8], test_copy.state[13], self.training_env.env_method('get_state')[0]['state'][8], self.training_env.env_method('get_state')[0]['state'][13])
+                            #"""
+                            #possible_states.append(possible_state[0])
+                            #if not possible_state:
+                                #possible_actions.append((x_value, y_value, z_value, j_value))
+                #test_copy.render()
+            #print('possible states: ', len(possible_actions), possible_actions, possible_states)
+            
+            # Grab all possible actions by joint. 
+            left_hip_actions = [item[0] for item in possible_actions]
+            left_knee_actions = [item[1] for item in possible_actions]
+            right_hip_actions = [item[2] for item in possible_actions]
+            right_knee_actions = [item[3] for item in possible_actions]
+
+        """ 
+            if action_list[step-1] != self.action:
+                raise Exception("Invalid action was selected: ", action_list[step], self.action)
+        """
+
+        self.gait.save_point_env = None
+        self.gait.simulated_env = None
+        self.gait.training_env = None
+        self.gait.snapshot = None
+        self.gait.recorded_actions = []
+        self.gait.recorded_states = []
+
+        self.gait.options_framework = False
+
+        self.gait.recorded_actions.append(self.training_env.env_method('get_state')[0]['action'])
+        """
+        #print(sim[0]['state'][8], sim[0]['state'][13], sim[0]['action'])
+        """
+        def simulate(self, a, b, c, d):
+
+        masked_action = [a, b, c, d]
+        print('in simulate: ', self.joints[2].angle)
+        
+        left_hip = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
+        left_knee = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
+        right_hip = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
+        right_knee = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
+        
+        action = [left_hip[masked_action[0]], left_knee[masked_action[1]], right_hip[masked_action[2]], right_knee[masked_action[3]]]
+        #action = [left_hip[masked_action[1]], left_knee[masked_action[2]], right_hip[masked_action[3]], right_knee[masked_action[4]]]
+        """
+        if self.counter == 0 or len(masked_action) == 4:
+        #print(masked_action)
+        #if np.all(masked_action==0):
+            action = [left_hip[masked_action[0]], left_knee[masked_action[1]], right_hip[masked_action[2]], right_knee[masked_action[3]]]
+        else:
+            action = [left_hip[masked_action[1]], left_knee[masked_action[2]], right_hip[masked_action[3]], right_knee[masked_action[4]]]
+        """
+        # Modify the joints with the simulated action. 
+        control_speed = False  # Should be easier as well
+        if control_speed:
+            self.joints[0].motorSpeed = float(SPEED_HIP  * np.clip(action[0], -1, 1))
+            self.joints[1].motorSpeed = float(SPEED_KNEE * np.clip(action[1], -1, 1))
+            self.joints[2].motorSpeed = float(SPEED_HIP  * np.clip(action[2], -1, 1))
+            self.joints[3].motorSpeed = float(SPEED_KNEE * np.clip(action[3], -1, 1))
+        else:
+            self.joints[0].motorSpeed     = float(SPEED_HIP     * np.sign(action[0]))
+            self.joints[0].maxMotorTorque = float(MOTORS_TORQUE * np.clip(np.abs(action[0]), 0, 1))
+            self.joints[1].motorSpeed     = float(SPEED_KNEE    * np.sign(action[1]))
+            self.joints[1].maxMotorTorque = float(MOTORS_TORQUE * np.clip(np.abs(action[1]), 0, 1))
+            self.joints[2].motorSpeed     = float(SPEED_HIP     * np.sign(action[2]))
+            self.joints[2].maxMotorTorque = float(MOTORS_TORQUE * np.clip(np.abs(action[2]), 0, 1))
+            self.joints[3].motorSpeed     = float(SPEED_KNEE    * np.sign(action[3]))
+            self.joints[3].maxMotorTorque = float(MOTORS_TORQUE * np.clip(np.abs(action[3]), 0, 1))
+
+
+        # Step the world.         
+        self.world.Step(1.0/FPS, 6*30, 2*30)
+
+        state = {
+            'action': action,
+            'hull': self.hull.angle,        # Normal angles up to 0.5 here, but sure more is possible.
+            'left_hip_angle': self.joints[0].angle,   # This will give 1.1 on high up, but it's still OK (and there should be spikes on hiting the ground, that's normal too)
+            'left_knee_angle': self.joints[1].angle + 1.0,
+            'left_leg_contact': self.legs[1].ground_contact,
+            'right_hip_angle': self.joints[2].angle,
+            'right_knee_angle': self.joints[3].angle + 1.0,
+            'right_leg_contact': self.legs[3].ground_contact
+        }
+        #print(state)
+
+        return [not state['left_leg_contact'] and not state['right_leg_contact'], action, state['left_leg_contact'], state['right_leg_contact'], round(state['right_hip_angle'], 4)] #state
+    

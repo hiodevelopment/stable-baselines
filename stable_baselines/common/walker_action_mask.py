@@ -1,5 +1,8 @@
 import sys
 import math
+import copy
+import csv
+import time
 
 import numpy as np
 import Box2D
@@ -104,6 +107,20 @@ class ContactDetector(contactListener):
         for leg in [self.env.legs[1], self.env.legs[3]]:
             if leg in [contact.fixtureA.body, contact.fixtureB.body]:
                 leg.ground_contact = True
+        
+        # Detect Forces on Contact
+        contact_force = 0
+        if self.env.state_machine is not None:
+            if self.env.state_machine.state == 'plant_leg' and (self.env.legs[1] in [contact.fixtureA.body, contact.fixtureB.body] or self.env.legs[3] in [contact.fixtureA.body, contact.fixtureB.body]):
+                for i, leg in enumerate([self.env.legs[1], self.env.legs[3]]):
+                    for c in leg.contacts:
+                        if c.contact.manifold.pointCount > 0:
+                            #print('contact force: ', i, c.contact.manifold.points[0].normalImpulse/(1.0/FPS))
+                            if c.contact.manifold.points[0].normalImpulse/(1.0/FPS) > contact_force:
+                                contact_force = c.contact.manifold.points[0].normalImpulse/(1.0/FPS)
+                                self.env.leg_force = contact_force  
+                                self.env.state_machine.step_flag = True
+
     def EndContact(self, contact):
         for leg in [self.env.legs[1], self.env.legs[3]]:
             if leg in [contact.fixtureA.body, contact.fixtureB.body]:
@@ -126,6 +143,15 @@ class BipedalWalker(gym.Env, EzPickle):
         self.world = Box2D.b2World()
         self.terrain = None
         self.hull = None
+        self.leg_force = 0
+
+        
+        #ts = str(int(time.time()))
+        #print(ts)
+        #with open('walker_teaching_log_' + ts + '.csv', 'w', newline='') as file:
+        with open('walker_teaching_log.csv', 'w', newline='') as file:
+            csv_writer = csv.writer(file)
+            csv_writer.writerow(['iteration', 'episode', 'gait_iteration', 'gait_phase', 'gait_action', 'left_hip', 'left_knee', 'right_hip', 'right_knee', 'terminal', 'gait_kpi', 'reward', 'reason_code'])
 
         self.prev_shaping = None
 
@@ -148,19 +174,16 @@ class BipedalWalker(gym.Env, EzPickle):
         
 
         high = np.array([np.inf] * 28)
-        #self.action_space = spaces.Box(np.array([-1, -1, -1, -1]), np.array([1, 1, 1, 1]), dtype=np.float32)
         self.observation_space = gym.spaces.Box(-high, high, dtype=np.float32)
 
         self.action_space = MultiDiscrete([3, 21, 21, 21, 21])
-
-        #self.observation_shape = (24,)
-        #self.observation_space = gym.spaces.Box(low=-high, high=high, shape=self.observation_shape, dtype=np.float32)
 
         self.valid_actions = []
         self.state_machine = None
         self.reset()
         self.terminal = False
         self.counter = 0
+        self.episodes = 0
     
         #print('env init', len(self.valid_actions[0]), len(self.valid_actions[1]), len(self.valid_actions[2]), len(self.valid_actions[3]))
 
@@ -169,10 +192,9 @@ class BipedalWalker(gym.Env, EzPickle):
         return [seed]
 
     def get_state(self):
-        return {'state': self.state, 'action': self.action, 'legs': self.legs}
+        return {'state': self.state, 'action': self.action, 'joints': self.joints, 'hull': self.hull, 'legs': self.legs, 'world': self.world}
 
     def set_infos(self, infos):
-        #print('in infos: ', infos[0])
         self.valid_actions = infos
 
     def set_state_machine(self, machine):
@@ -352,10 +374,10 @@ class BipedalWalker(gym.Env, EzPickle):
 
         self.legs = []
         self.joints = []
-        for i in [-1,+1]:
+        for i in [-1,+1]: # Original position is right leg slightly forward, left leg slightly back. 
             leg = self.world.CreateDynamicBody(
                 position = (init_x, init_y - LEG_H/2 - LEG_DOWN),
-                angle = (i*0.05),
+                angle = (i*0.15),  # *0.05
                 fixtures = LEG_FD
                 )
             leg.color1 = (0.6-i/10., 0.3-i/10., 0.5-i/10.)
@@ -377,7 +399,7 @@ class BipedalWalker(gym.Env, EzPickle):
 
             lower = self.world.CreateDynamicBody(
                 position = (init_x, init_y - LEG_H*3/2 - LEG_DOWN),
-                angle = (i*0.05),
+                angle = (i*0.15),  # *0.05
                 fixtures = LOWER_FD
                 )
             lower.color1 = (0.6-i/10., 0.3-i/10., 0.5-i/10.)
@@ -428,63 +450,35 @@ class BipedalWalker(gym.Env, EzPickle):
             self.state_machine.num_timesteps = 0 # reset the iteration counter.
             self.state_machine.swinging_leg = 'right'
             #print('reset ', self.state_machine.num_timesteps)
-        #print('env reset', self.valid_actions)
-        return self.step(np.array([0,0,0,0]))[0]
+        return self.step(np.array([0,10,10,10,10]))[0]
 
-    def simulate(self, a, b, c, d):
-
-        action = [a, b, c, d]
-
-        control_speed = False  # Should be easier as well
-        if control_speed:
-            self.joints[0].motorSpeed = float(SPEED_HIP  * np.clip(action[0], -1, 1))
-            self.joints[1].motorSpeed = float(SPEED_KNEE * np.clip(action[1], -1, 1))
-            self.joints[2].motorSpeed = float(SPEED_HIP  * np.clip(action[2], -1, 1))
-            self.joints[3].motorSpeed = float(SPEED_KNEE * np.clip(action[3], -1, 1))
-        else:
-            self.joints[0].motorSpeed     = float(SPEED_HIP     * np.sign(action[0]))
-            self.joints[0].maxMotorTorque = float(MOTORS_TORQUE * np.clip(np.abs(action[0]), 0, 1))
-            self.joints[1].motorSpeed     = float(SPEED_KNEE    * np.sign(action[1]))
-            self.joints[1].maxMotorTorque = float(MOTORS_TORQUE * np.clip(np.abs(action[1]), 0, 1))
-            self.joints[2].motorSpeed     = float(SPEED_HIP     * np.sign(action[2]))
-            self.joints[2].maxMotorTorque = float(MOTORS_TORQUE * np.clip(np.abs(action[2]), 0, 1))
-            self.joints[3].motorSpeed     = float(SPEED_KNEE    * np.sign(action[3]))
-            self.joints[3].maxMotorTorque = float(MOTORS_TORQUE * np.clip(np.abs(action[3]), 0, 1))
-
-        self.world.Step(1.0/FPS, 6*30, 2*30)
-
-        pos = self.hull.position
-        vel = self.hull.linearVelocity
-
-        state = {
-            'hull': self.hull.angle,        # Normal angles up to 0.5 here, but sure more is possible.
-            'left_hip_angle': self.joints[0].angle,   # This will give 1.1 on high up, but it's still OK (and there should be spikes on hiting the ground, that's normal too)
-            'left_knee_angle': self.joints[1].angle + 1.0,
-            'left_leg_contact': 1.0 if self.legs[1].ground_contact else 0.0,
-            'right_hip_angle': self.joints[2].angle,
-            'right_knee_angle': self.joints[3].angle + 1.0,
-            'right_leg_contact': 1.0 if self.legs[3].ground_contact else 0.0
-        }
-
-        return not bool(state['left_leg_contact']) and not bool(state['right_leg_contact']) #state
-    
     def step(self, masked_action):
-        self.hull.ApplyForceToCenter((0, 20), True) # Uncomment this to receive a bit of stability help
+        #self.hull.ApplyForceToCenter((0, 20), True) # Uncomment this to receive a bit of stability help
+        #print(self.world.joints[0].GetReactionForce(1.0/FPS), self.world.joints[1].GetReactionForce(1.0/FPS))
+        #print(self.hull.mass, self.hull.massData, self.hull.inertia, self.legs[0].mass, self.legs[1].mass)
+        #print(self.world.GetProfile)
+        """
+        for i, leg in enumerate(self.legs):
+            if self.legs[i].contacts:
+                for i, value in enumerate(self.legs[0].contacts):
+                    print(self.legs[0].contacts[i].contact.manifold.points)
+        """
+        #sys.exit()
 
         #print('in step', self.valid_actions[1][0])
+        #print('in step, action:', masked_action)
 
         left_hip = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
         left_knee = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
         right_hip = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
         right_knee = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
         
-        if self.counter == 0:
-            action = [left_hip[masked_action[0]], left_knee[masked_action[1]], right_hip[masked_action[2]], right_knee[masked_action[3]]]
+        action = [left_hip[masked_action[1]], left_knee[masked_action[2]], right_hip[masked_action[3]], right_knee[masked_action[4]]]
+        
+        if np.all(masked_action==0):  # The reset action of the env [0,0,0,0] should not be translated to [-1,-1,-1,-1].
+            self.action = masked_action
         else:
-            action = [left_hip[masked_action[1]], left_knee[masked_action[2]], right_hip[masked_action[3]], right_knee[masked_action[4]]]
-        #print('in step, action:', action)
-
-        self.action = masked_action
+            self.action = masked_action
 
         control_speed = False  # Should be easier as well
         if control_speed:
@@ -532,6 +526,8 @@ class BipedalWalker(gym.Env, EzPickle):
             1.0 if self.legs[3].ground_contact else 0.0
             ]
         #print(self.legs[0].joints[0].joint.anchorB[0], self.joints[0].anchorB[0])
+        #print('knee angles: ', state[6], state[11])
+
         state += [l.fraction for l in self.lidar]
         state += [self.joints[0].anchorB[1], self.joints[2].anchorB[1], self.joints[1].anchorB[1], self.joints[3].anchorB[1]] # left hip, right hip, left knee height, right knee height
         assert len(state)==28
@@ -539,149 +535,255 @@ class BipedalWalker(gym.Env, EzPickle):
         self.scroll = pos.x - VIEWPORT_W/SCALE/5
 
         done = False
-        shaping = 0 #130*pos[0]/SCALE   # moving forward is a way to receive reward (normalized to get 300 on completion)
+        gait_kpi = None
+        reason_code = 'none'
+        shaping = 130*pos[0]/SCALE   # moving forward is a way to receive reward (normalized to get 300 on completion)
         #shaping -= 5.0*abs(state[0])  # keep head straight, other than that and falling, any behavior is unpunished
-        #print('hull angle: ', state[0])
-        reward = 0
-        if self.prev_shaping is not None:
-            reward = shaping - self.prev_shaping
-        self.prev_shaping = shaping
-
-        if self.state_machine is not None: 
-            if self.state_machine.teaching['radio-2']:
-                # Step reward for swinging leg position. 
-                if self.state_machine.swinging_leg == 'left':
-                    reward += self.legs[2].position[0]
-                if self.state_machine.swinging_leg == 'right':
-                    reward += self.legs[0].position[0]
-
-        # Reward for taking a step
-        if self.state_machine is not None:
-            #print(self.state_machine.step_flag)
-            if self.state_machine.num_timesteps <= 1 and self.state_machine.step_flag:  # only give out the position reward on taking a step.
-                #print('Step: ', self.state_machine.step_count)
-                if self.state_machine.teaching['radio-1']:  # Lesson 1 is just for the first step. 
-                    done = True
-                #if self.state_machine.teaching['radio-2'] and self.state_machine.step_count == 2: # Lesson 2 ends at second step
-                    #done = True
-                if self.state_machine.swinging_leg == 'left':
-                    if self.state_machine.teaching['radio-1']:
-                        reward += 50*state[2] # x velocity
-                    if self.state_machine.teaching['radio-2']:
-                        reward += 50*state[2]*(self.state_machine.step_count+1) # Move forward, get more reward for step progress than other progress
-                    print('left swinging leg reward: ', self.legs[0].position[0], self.legs[2].position[0], reward)
-                if self.state_machine.swinging_leg == 'right':
-                    if self.state_machine.teaching['radio-1']:
-                        reward += 50*state[2] # x velocity, 50 is max.
-                    if self.state_machine.teaching['radio-2']:
-                        reward += 50*state[2]*(self.state_machine.step_count+1) # Move forward, get more reward for step progress than other progress
-                    print('right swinging leg reward: ', self.legs[2].position[0], reward)
-                #else:
-                    #reward += 10*pos[0]*(self.state_machine.step_count+1) # Move forward, get more reward for step progress than other progress
-                #print('giving_reward')
-                self.state_machine.step_flag = False
-                #reward += 100*self.state_machine.step_count/(self.state_machine.num_timesteps+1)  # just take steps
-                pass
-            #print('step reward: ', reward, self.state_machine.num_timesteps)
 
         """
         for a in action:
             reward -= 0.00035 * MOTORS_TORQUE * np.clip(np.abs(a), 0, 1)
             # normalized to about -50.0 using heuristic, more optimal agent should spend less
         """
-        
-        if self.game_over or pos[0] < 0: 
+
+        reward = 0
+        if self.prev_shaping is not None:
+            reward = shaping - self.prev_shaping
+        self.prev_shaping = shaping
+
+        #### Environment Rules: Don't fall backwards or fall on your head
+
+        if self.game_over or pos[0] < 0: # or state[6] < 0 or state[11] < 0: # Hyperextension of the knee is injury
             reward = -100
             done   = True
+            reason_code = 'fell backward'
         if pos[0] > (TERRAIN_LENGTH-TERRAIN_GRASS)*TERRAIN_STEP:
             done   = True
 
-        # First lesson teaches first step. 
-        if self.state_machine is not None: 
-            if self.state_machine.teaching['radio-1']:
-                """
-                if abs(state[4] - state[9]) > 0.75 and (self.state_machine.state == 'start' or self.state_machine.state == 'lift_leg' or self.state_machine == 'plant_leg'):
-                    #reward -= 10/(self.state_machine.num_timesteps+1)
-                    done = True
-                    reward -= 50
-                    print('terminal condition: legs too far apart ', pos[0], reward)
-                """
+        #if state[6] < 0 or state[11] < 0:
+        if state[6] < 0:
+            print('terminal condition: hyperextended planted knee ', state[6], state[11], reward)
 
-                if state[0] > 0.2 or state[0] < -0.1:
-                    done = True
-                    reward = -50
-                    #print('terminal condition: hull angle too steep ', pos[0], reward)
-            
-                if state[8] == 0 and state[13] == 0: # and self.state_machine.state == 'start':  # both legs off ground.
+        #### Teaching Strategies: Gait Phase has unique goals and rules expressed as rewards and terminals. #####
+        if self.state_machine is not None and not done:
+
+            if self.state_machine.num_timesteps > 100: # Stuck in one phase for more than 50 timesteps.
+                done = True
+                reason_code = 'stuck'
+                reward = -100
+
+            # Start 
+            # Goal 1: Hull tilts down, Rules: Both legs touching the ground, Action: Flex hip
+            # Goal 2: Maximize forward motion, Rules: Planted leg touching the ground, Action: Extend planted leg (extend hip, flex knee)
+
+            if state[0] > 0.5 : #  < state[0] -0.1 or 
+                    start_crouch_done = done = True
+                    reason_code = 'hull angle too steep'
+                    print('terminal condition: hull angle too steep ', state[0], reward)
+                
+            if state[8] == 0 and state[13] == 0: 
+                if self.state_machine.swinging_leg == 'left':
+                    start_crouch_done = done = True
+                    reason_code = 'neither leg in contact with the ground'
+                    print('terminal condition: neither leg in contact with the ground ', state[8], state[13], reward)
+                if self.state_machine.swinging_leg == 'right':
+                    start_crouch_done = done = True
+                    reason_code = 'neither leg in contact with the ground'
+                    print('terminal condition: neither leg in contact with the ground ', state[8], state[13], reward, self.action)
+
+
+            # Start Crouch
+            # Goal: Hull tilts down, Rules: Both legs touching the ground, Action: Flex hip
+            if self.state_machine.state == 'start_crouch':
+
+                start_crouch_done = False
+
+                if state[0] > 0.5 : #  < state[0] -0.1 or 
+                    start_crouch_done = done = True
+                    reason_code = 'hull angle too steep'
+                    print('terminal condition: hull angle too steep ', state[0], reward)
+                
+                if state[8] == 0 and state[13] == 0: 
                     if self.state_machine.swinging_leg == 'left':
-                        done = True
-                        reward -= 50/self.legs[0].position[0] # Only reward success
-                        #print('terminal condition: neither leg in contact with the ground ', self.legs[0].position[0], reward)
+                        start_crouch_done = done = True
+                        reason_code = 'neither leg in contact with the ground'
+                        print('terminal condition: neither leg in contact with the ground ', state[8], state[13], reward)
                     if self.state_machine.swinging_leg == 'right':
-                        done = True
-                        reward -= 50/self.legs[2].position[0] # Only reward success
-                        #print('terminal condition: neither leg in contact with the ground ', self.legs[2].position[0], reward)
-        
-        # More difficult lesson 2, after learning to get to the second step. 
-        if self.state_machine is not None: 
-            if self.state_machine.teaching['radio-2']:
+                        start_crouch_done = done = True
+                        reason_code = 'neither leg in contact with the ground'
+                        print('terminal condition: neither leg in contact with the ground ', state[8], state[13], reward, self.action)
 
-                if (state[0] > 0.2 or state[0] < -0.1) and (self.state_machine.state == 'start' or self.state_machine.state == 'left_leg'):
-                    done = True
-                    reward = -50
-                    print('terminal condition: hull angle too steep ', pos[0], reward)
+                # Reward, 10 points at hull angle = -0.05.
+                if start_crouch_done or state[0] < -0.05:
+                    reward += 10*math.exp(-20*abs(state[0]+0.05)) - 9
+                    print('crouch terminal penalty: ', reward)
 
-                if abs(state[4] - state[9]) > 0.8: # and self.state_machine.state == 'switch_leg':
-                    #reward -= 10/(self.state_machine.num_timesteps+1)
-                    done = True
-                    reward -= 50
-                    print('terminal condition: legs too far apart ', pos[0], reward)
-       
-                if state[8] == 0 and state[13] == 0: # and self.state_machine.state == 'start':  # both legs off ground.
+                # Reward, 10 points at 0 velocity or above
+                if spring_forward_done or (state[2] > 0 and masked_action[0] == 1):
+                    reward += 10*math.exp(10*(state[2] - abs(state[2]))) - 9
+                    print('spring forward terminal penalty: ', reward)
+
+                gait_kpi = state[0]
+
+            # Start Spring Forward
+            # Goal: Maximize forward motion, Rules: Planted leg touching the ground, Action: Extend planted leg (extend hip, flex knee)
+            if self.state_machine.state == 'start_spring_forward':
+
+                spring_forward_done = False
+
+                init_x = TERRAIN_STEP*TERRAIN_STARTPAD/2 # starting x position
+                #reward += pos[0] - init_x # This should be a measure of x distance traveled during this phase, normalized to 0 to 1
+                self.state_machine.start_spring_forward_reward += pos[0] - init_x
+
+                if state[8] == 0 and state[13] == 0: 
                     if self.state_machine.swinging_leg == 'left':
-                        done = True
-                        reward -= 50/self.legs[0].position[0] # Only reward success
-                        print('terminal condition: neither leg in contact with the ground ', self.legs[0].position[0], reward)
+                        spring_forward_done = done = True
+                        reason_code = 'neither leg in contact with the ground'
+                        print('terminal condition: neither leg in contact with the ground ', state[8], state[13], reward)
                     if self.state_machine.swinging_leg == 'right':
-                        done = True
-                        reward -= 50/self.legs[2].position[0] # Only reward success
-                        print('terminal condition: neither leg in contact with the ground ', self.legs[2].position[0], reward)
-             
-                if pos[0] < self.position_history[0]:
-                    if self.state_machine is not None:
-                        if self.state_machine.num_timesteps <= 1 and not self.state_machine.step_flag:  # don't enforce terminal when swinging leg plants. 
-                            done = True
-                            reward -= 50
-                            print('terminal condition: no forward progress ', pos[0], reward)
+                        spring_forward_done = done = True
+                        reason_code = 'neither leg in contact with the ground'
+                        print('terminal condition: neither leg in contact with the ground ', state[8], state[13], reward, self.action)
+                """
+                if self.state_machine.num_timesteps > 2 and pos[0] <= self.position_history[4]:  # No forward progress 
+                    if self.state_machine.num_timesteps <= 1 and not self.state_machine.step_flag:  # don't enforce terminal when swinging leg plants. 
+                        spring_forward_done = done = True
+                        reason_code = 'no forward progress'
+                        print('terminal condition: no forward progress ', pos[0] < self.position_history[0], reward)
+                
+                if abs(state[4] - state[9]) < abs(self.state_history[0][4] - self.state_history[0][9]):  # Legs are not moving apart
+                    done = True
+                    reason_code = 'legs not moving apart'
+                    print('terminal condition: legs not moving apart', self.state_machine.state, abs(state[4] - state[9]), abs(self.state_history[0][4] - self.state_history[0][9]), reward)
+                """
+                #print('velocity: ', state[2])
 
-                # Is the swinging leg moving forward during all but the vault over the planted leg.
+                # Reward, 10 points at 0 velocity or above
+                if spring_forward_done or (state[2] > 0 and masked_action[0] == 1):
+                    reward += 10*math.exp(10*(state[2] - abs(state[2]))) - 9
+                    print('spring forward terminal penalty: ', reward)
+
+                gait_kpi = state[2]
+
+            # Plant Leg
+            # Goal: lean forward and take a step that supports weight, Rules: planted leg touching the ground, swinging leg swings (moves forward)
+            if self.state_machine.state == 'plant_leg':
+
+                plant_leg_done = False
+
+                # Add a stepwise reward for leaning forward (hull center of mass is in front of the planted leg), self.hull.massData.center[0], velocity?
+                if self.state_machine.step_flag:  # only give out the position reward on taking a step.
+
+                    # Reward
+                    reward += 10*math.exp(-0.07*abs(self.leg_force - (self.hull.mass + self.legs[0].mass + self.legs[1].mass)*9.81)) - 9
+                    #print('plant leg reward: ', reward)
+                    
+                    if self.state_machine.swinging_leg == 'left':
+                        if self.leg_force >= (self.hull.mass + self.legs[0].mass + self.legs[1].mass)*9.81: # step can support weight of vaulting over planted leg. 
+                            reason_code = 'step taken'
+                            print('step taken: ', (self.hull.mass + self.legs[0].mass + self.legs[1].mass)*9.81, self.leg_force)
+                        else: 
+                            plant_leg_done = done = True  # terminate on first step if it can't support the weight of the robot.
+                            reason_code = 'step cannot support robot weight'
+                            print('terminal condition: step cannot support robot weight ', (self.hull.mass + self.legs[0].mass + self.legs[1].mass)*9.81, self.leg_force, reward)
+                        
+                    if self.state_machine.swinging_leg == 'right':
+                        if self.leg_force >= (self.hull.mass + self.legs[0].mass + self.legs[1].mass)*9.81: # step can support weight of vaulting over planted leg. 
+                            reason_code = 'step taken'
+                            print('step taken: ', (self.hull.mass + self.legs[0].mass + self.legs[1].mass)*9.81, self.leg_force)
+                        else: 
+                            plant_leg_done = done = True  # terminate on first step if it can't support the weight of the robot.
+                            reason_code = 'step cannot support robot weight'
+                            print('terminal condition: step cannot support robot weight ', (self.hull.mass + self.legs[0].mass + self.legs[1].mass)*9.81, self.leg_force, reward)
+                        
+
+                if state[8] == 0 and state[13] == 1: 
+                    if self.state_machine.swinging_leg == 'left': 
+                        #done = True
+                        reason_code = 'neither leg in contact with the ground'
+                        print('terminal condition: neither leg in contact with the ground ', state[8], state[13], reward)
+                    if self.state_machine.swinging_leg == 'right':
+                        #done = True
+                        reason_code = 'neither leg in contact with the ground'
+                        print('terminal condition: neither leg in contact with the ground ', state[8], state[13], reward, self.action)
+
+                #self.state_machine.step_flag = False
+
+                gait_kpi = self.leg_force - (self.hull.mass + self.legs[0].mass + self.legs[1].mass)*9.81
+                
+            if self.state_machine.state == 'switch_legs':
+
+                switch_leg_done = False
+
                 if self.state_machine.num_timesteps <= 1 and not self.state_machine.step_flag and not (self.state_machine.state == 'switch_leg' and self.state_machine.num_timesteps < 3):  
                     if self.state_machine.swinging_leg == 'left':
                         if self.legs[0].position[0] < self.leg_history[0][0]:
-                            done = True
-                            reward -= 50
+                            switch_leg_done = done = True
+                            reason_code = 'swinging leg not moving forward'
                             print('terminal condition: swinging leg not moving forward ', self.leg_history[0][0], self.legs[0].position[0], reward)
-                    if self.state_machine.swinging_leg == 'right':
-                        if self.legs[2].position[0] < self.leg_history[0][1]:
-                            done = True
-                            reward -= 50
-                            print('terminal condition: swinging leg not moving forward ', self.leg_history[0][1], self.legs[2].position[0], reward)
+                
+                if self.state_machine.swinging_leg == 'right':
+                    if self.legs[2].position[0] < self.leg_history[0][1]:
+                        switch_leg_done = done = True
+                        reason_code = 'swinging leg not moving forward'
+                        print('terminal condition: swinging leg not moving forward ', self.leg_history[0][1], self.legs[2].position[0], reward)
+                
+                # Are the legs moving toward each other. 
+                if abs(state[4] - state[9]) > abs(self.state_history[0][4] - self.state_history[0][9]):  # Legs are not moving toward each other
+                    switch_leg_done = done = True
+                    reason_code = 'legs not moving toward each other'
+                    print('terminal condition: legs not moving toward each other', self.state_machine.state, abs(state[4] - state[9]), abs(self.state_history[0][4] - self.state_history[0][9]), reward)
 
-                # Are the legs moving apart during gait phase 1 and 2
-                if self.state_machine.num_timesteps <= 1 and not self.state_machine.step_flag and (self.state_machine.state == 'lift_leg' or self.state_machine == 'plant_leg'):
-                    if abs(state[4] - state[9]) < abs(self.state_history[0][4] - self.state_history[0][9]):  # Legs are not moving apart
-                        done = True
-                        reward -= 50
+                # Reward, 10 points for swinging leg in front of planted leg
+                if self.state_machine.swinging_leg == 'left' and masked_action[0] == 0:
+                    reward += 10*math.exp(10*(self.legs[2].position[0] - self.legs[0].position[0]) - abs(self.legs[2].position[0] - self.legs[0].position[0])) - 9
+                    print('plant leg reward: ', reward)
+                    pass
+                if self.state_machine.swinging_leg == 'right' and masked_action[0] == 0:
+                    reward += 10*math.exp(10*(self.legs[0].position[0] - self.legs[2].position[0]) - abs(self.legs[0].position[0] - self.legs[2].position[0])) - 9
+                    print('plant leg reward: ', reward)
+                    pass
+
+                if self.state_machine.swinging_leg == 'left':
+                    gait_kpi = self.legs[2].position[0] - self.legs[0].position[0]
+                if self.state_machine.swinging_leg == 'right':
+                    gait_kpi = self.legs[0].position[0] - self.legs[2].position[0]
+
+                if state[0] > 0.5 : #  < state[0] -0.1 or 
+                    done = True
+                    reason_code = 'hull angle too steep'
+                    print('terminal condition: hull angle too steep ', state[0], reward)
+
+            if self.state_machine.state == 'lift_leg':
+
+                lift_leg_done = False
+
+                if abs(state[4] - state[9]) < abs(self.state_history[0][4] - self.state_history[0][9]):  # Legs are not moving apart
+                        lift_leg_done = done = True
+                        reason_code = 'legs not moving apart'
                         print('terminal condition: legs not moving apart', self.state_machine.state, abs(state[4] - state[9]), abs(self.state_history[0][4] - self.state_history[0][9]), reward)
                 
-                # Are the legs moving toward each other during gait phase 3
-                if self.state_machine.num_timesteps <= 1 and not self.state_machine.step_flag and self.state_machine.state == 'switch_leg' and not self.state_machine.num_timesteps < 3:
-                    if abs(state[4] - state[9]) > abs(self.state_history[0][4] - self.state_history[0][9]):  # Legs are not moving toward each other
-                        done = True
-                        reward -= 50
-                        print('terminal condition: legs not moving toward each other', self.state_machine.state, abs(state[4] - state[9]), abs(self.state_history[0][4] - self.state_history[0][9]), reward)
+                if state[0] > 0.5:
+                    lift_leg_done = done = True
+                    reason_code = 'hull angle too steep'
+                    print('terminal condition: hull angle too steep ', state[0], reward)
                 
-        
+                if state[8] == 0 and state[13] == 0: 
+                    if self.state_machine.swinging_leg == 'left':
+                        lift_leg_done = done = True
+                        reason_code = 'neither leg in contact with the ground'
+                        print('terminal condition: neither leg in contact with the ground ', state[8], state[13], reward)
+                    if self.state_machine.swinging_leg == 'right':
+                        lift_leg_done = done = True
+                        reason_code = 'neither leg in contact with the ground'
+                        print('terminal condition: neither leg in contact with the ground ', state[8], state[13], reward, self.action)
+
+                # Reward
+                if lift_leg_done or state[0] < -0.05:
+                    reward += 10*math.exp(-20*abs(state[0]+0.05)) - 9
+                    print('lift leg terminal penalty: ', reward)
+
+                gait_kpi = state[0]
 
         self.state = state
         self.leg_history.appendleft((self.legs[0].position[0], self.legs[2].position[0]))
@@ -695,6 +797,19 @@ class BipedalWalker(gym.Env, EzPickle):
         #self.render()
         self.counter += 1
         #print('set action mask in env')
+
+        if done:
+            self.episodes += 1
+            print('episode: ', self.episodes)
+
+        #"""
+        # Write CSV iteration here. 
+        if self.state_machine is not None:
+            with open('walker_teaching_log.csv', 'a', newline='') as file:
+                csv_writer = csv.writer(file)
+                csv_writer.writerow([self.counter, self.episodes, self.state_machine.num_timesteps, self.state_machine.state, masked_action[0], masked_action[1], masked_action[2], masked_action[3], masked_action[4], 'gait phase complete' if done else 'running', gait_kpi, reward, reason_code])
+        #"""
+
         return np.array(state), reward, done, {'action_mask': self.valid_actions}
         #return np.array(state), reward, done, {}
 
@@ -748,57 +863,6 @@ class BipedalWalker(gym.Env, EzPickle):
 
         return self.viewer.render(return_rgb_array = mode=='rgb_array')
 
-    # Modified openai gym rendering to support this.  Unused for now. 
-    def image_data(self, mode='human'):
-        from gym.envs.classic_control import rendering
-        if self.viewer is None:
-            self.viewer = rendering.Viewer(VIEWPORT_W, VIEWPORT_H)
-        self.viewer.set_bounds(self.scroll, VIEWPORT_W/SCALE + self.scroll, 0, VIEWPORT_H/SCALE)
-
-        self.viewer.draw_polygon( [
-            (self.scroll,                  0),
-            (self.scroll+VIEWPORT_W/SCALE, 0),
-            (self.scroll+VIEWPORT_W/SCALE, VIEWPORT_H/SCALE),
-            (self.scroll,                  VIEWPORT_H/SCALE),
-            ], color=(0.9, 0.9, 1.0) )
-        for poly,x1,x2 in self.cloud_poly:
-            if x2 < self.scroll/2: continue
-            if x1 > self.scroll/2 + VIEWPORT_W/SCALE: continue
-            self.viewer.draw_polygon( [(p[0]+self.scroll/2, p[1]) for p in poly], color=(1,1,1))
-        for poly, color in self.terrain_poly:
-            if poly[1][0] < self.scroll: continue
-            if poly[0][0] > self.scroll + VIEWPORT_W/SCALE: continue
-            self.viewer.draw_polygon(poly, color=color)
-
-        self.lidar_render = (self.lidar_render+1) % 100
-        i = self.lidar_render
-        if i < 2*len(self.lidar):
-            l = self.lidar[i] if i < len(self.lidar) else self.lidar[len(self.lidar)-i-1]
-            self.viewer.draw_polyline( [l.p1, l.p2], color=(1,0,0), linewidth=1 )
-
-        for obj in self.drawlist:
-            for f in obj.fixtures:
-                trans = f.body.transform
-                if type(f.shape) is circleShape:
-                    t = rendering.Transform(translation=trans*f.shape.pos)
-                    self.viewer.draw_circle(f.shape.radius, 30, color=obj.color1).add_attr(t)
-                    self.viewer.draw_circle(f.shape.radius, 30, color=obj.color2, filled=False, linewidth=2).add_attr(t)
-                else:
-                    path = [trans*v for v in f.shape.vertices]
-                    self.viewer.draw_polygon(path, color=obj.color1)
-                    path.append(path[0])
-                    self.viewer.draw_polyline(path, color=obj.color2, linewidth=2)
-
-        flagy1 = TERRAIN_HEIGHT
-        flagy2 = flagy1 + 50/SCALE
-        x = TERRAIN_STEP*3
-        self.viewer.draw_polyline( [(x, flagy1), (x, flagy2)], color=(0,0,0), linewidth=2 )
-        f = [(x, flagy2), (x, flagy2-10/SCALE), (x+25/SCALE, flagy2-5/SCALE)]
-        self.viewer.draw_polygon(f, color=(0.9,0.2,0) )
-        self.viewer.draw_polyline(f + [f[0]], color=(0,0,0), linewidth=2 )
-
-        return self.viewer.image_data()
-
     def close(self):
         if self.viewer is not None:
             self.viewer.close()
@@ -806,81 +870,3 @@ class BipedalWalker(gym.Env, EzPickle):
 
 class BipedalWalkerHardcore(BipedalWalker):
     hardcore = True
-
-if __name__=="__main__":
-    # Heurisic: suboptimal, have no notion of balance.
-    env = BipedalWalker()
-    env.reset()
-    steps = 0
-    total_reward = 0
-    a = np.array([0.0, 0.0, 0.0, 0.0])
-    STAY_ON_ONE_LEG, PUT_OTHER_DOWN, PUSH_OFF = 1,2,3
-    SPEED = 0.29  # Will fall forward on higher speed
-    state = STAY_ON_ONE_LEG
-    moving_leg = 0
-    supporting_leg = 1 - moving_leg
-    SUPPORT_KNEE_ANGLE = +0.1
-    supporting_knee_angle = SUPPORT_KNEE_ANGLE
-    while True:
-        s, r, done, info = env.step(a)
-        total_reward += r
-        if steps % 20 == 0 or done:
-            print("\naction " + str(["{:+0.2f}".format(x) for x in a]))
-            print("step {} total_reward {:+0.2f}".format(steps, total_reward))
-            print("hull " + str(["{:+0.2f}".format(x) for x in s[0:4] ]))
-            print("leg0 " + str(["{:+0.2f}".format(x) for x in s[4:9] ]))
-            print("leg1 " + str(["{:+0.2f}".format(x) for x in s[9:14]]))
-        steps += 1
-
-        contact0 = s[8]
-        contact1 = s[13]
-        moving_s_base = 4 + 5*moving_leg # 
-        supporting_s_base = 4 + 5*supporting_leg # This is 9 when supporting leg = 1, 4 when supporting leg = 0. Hip angle that matches supporting leg. 
-
-        hip_targ  = [None,None]   # -0.8 .. +1.1
-        knee_targ = [None,None]   # -0.6 .. +0.9
-        hip_todo  = [0.0, 0.0]
-        knee_todo = [0.0, 0.0]
-
-        if state==STAY_ON_ONE_LEG:
-            hip_targ[moving_leg]  = 1.1  # Positive hip motion for swinging leg.
-            knee_targ[moving_leg] = -0.6  # Negative knee motion for swinging leg.
-            supporting_knee_angle += 0.03
-            if s[2] > SPEED: supporting_knee_angle += 0.03
-            supporting_knee_angle = min( supporting_knee_angle, SUPPORT_KNEE_ANGLE )
-            knee_targ[supporting_leg] = supporting_knee_angle
-            if s[supporting_s_base+0] < 0.10: # supporting leg is behind
-                state = PUT_OTHER_DOWN
-        if state==PUT_OTHER_DOWN:
-            hip_targ[moving_leg]  = +0.1
-            knee_targ[moving_leg] = SUPPORT_KNEE_ANGLE
-            knee_targ[supporting_leg] = supporting_knee_angle
-            if s[moving_s_base+4]: # If the moving leg is ... down in contact with the ground?
-                state = PUSH_OFF
-                supporting_knee_angle = min( s[moving_s_base+2], SUPPORT_KNEE_ANGLE )
-        if state==PUSH_OFF:
-            knee_targ[moving_leg] = supporting_knee_angle
-            knee_targ[supporting_leg] = +1.0
-            if s[supporting_s_base+2] > 0.88 or s[2] > 1.2*SPEED:
-                state = STAY_ON_ONE_LEG
-                moving_leg = 1 - moving_leg
-                supporting_leg = 1 - moving_leg
-
-        if hip_targ[0]: hip_todo[0] = 0.9*(hip_targ[0] - s[4]) - 0.25*s[5]
-        if hip_targ[1]: hip_todo[1] = 0.9*(hip_targ[1] - s[9]) - 0.25*s[10]
-        if knee_targ[0]: knee_todo[0] = 4.0*(knee_targ[0] - s[6])  - 0.25*s[7]
-        if knee_targ[1]: knee_todo[1] = 4.0*(knee_targ[1] - s[11]) - 0.25*s[12]
-
-        hip_todo[0] -= 0.9*(0-s[0]) - 1.5*s[1] # PID to keep head strait
-        hip_todo[1] -= 0.9*(0-s[0]) - 1.5*s[1]
-        knee_todo[0] -= 15.0*s[3]  # vertical speed, to damp oscillations
-        knee_todo[1] -= 15.0*s[3]
-
-        a[0] = hip_todo[0]
-        a[1] = knee_todo[0]
-        a[2] = hip_todo[1]
-        a[3] = knee_todo[1]
-        a = np.clip(0.5*a, -1.0, 1.0)
-
-        env.render()
-        if done: break
