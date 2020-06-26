@@ -661,3 +661,96 @@
 
         return [not state['left_leg_contact'] and not state['right_leg_contact'], action, state['left_leg_contact'], state['right_leg_contact'], round(state['right_hip_angle'], 4)] #state
     
+    # Old crouch and spring
+
+    # Start Crouch
+            # Goal: Hull tilts down, Rules: Both legs touching the ground, Action: Flex hip
+            if self.state_machine.state == 'start_crouch':
+
+                start_crouch_done = False
+
+                if state[0] > 0.5 : #  < state[0] -0.1 or 
+                    start_crouch_done = done = True
+                    reason_code = 'hull angle too steep'
+                    print('terminal condition: hull angle too steep ', state[0], reward)
+                
+                if state[8] == 0 and state[13] == 0: 
+                    
+                    if self.state_machine.swinging_leg == 'left':
+                        start_crouch_done = done = True
+                        reason_code = 'neither leg in contact with the ground'
+                        print('terminal condition: neither leg in contact with the ground ', state[8], state[13], reward)
+                    if self.state_machine.swinging_leg == 'right':
+                        start_crouch_done = done = True
+                        reason_code = 'neither leg in contact with the ground'
+                        print('terminal condition: neither leg in contact with the ground ', state[8], state[13], reward, self.action)
+
+                # Reward, 10 points at hull angle = -0.05.
+                if start_crouch_done or state[0] < -0.05:
+                    reward += 10*math.exp(-20*abs(state[0]+0.05)) - 9
+                    print('crouch terminal penalty: ', reward)
+
+                # Reward, 10 points at 0 velocity or above
+                if spring_forward_done or (state[2] > 0 and masked_action[0] == 1):
+                    reward += 10*math.exp(10*(state[2] - abs(state[2]))) - 9
+                    print('spring forward terminal penalty: ', reward)
+
+                gait_kpi = state[0]
+
+            # Start Spring Forward
+            # Goal: Maximize forward motion, Rules: Planted leg touching the ground, Action: Extend planted leg (extend hip, flex knee)
+            if self.state_machine.state == 'start_spring_forward':
+
+                spring_forward_done = False
+
+                init_x = TERRAIN_STEP*TERRAIN_STARTPAD/2 # starting x position
+                #reward += pos[0] - init_x # This should be a measure of x distance traveled during this phase, normalized to 0 to 1
+                self.state_machine.start_spring_forward_reward += pos[0] - init_x
+
+                if state[8] == 0 and state[13] == 0: 
+                    if self.state_machine.swinging_leg == 'left':
+                        spring_forward_done = done = True
+                        reason_code = 'neither leg in contact with the ground'
+                        print('terminal condition: neither leg in contact with the ground ', state[8], state[13], reward)
+                    if self.state_machine.swinging_leg == 'right':
+                        spring_forward_done = done = True
+                        reason_code = 'neither leg in contact with the ground'
+                        print('terminal condition: neither leg in contact with the ground ', state[8], state[13], reward, self.action)
+                """
+                if self.state_machine.num_timesteps > 2 and pos[0] <= self.position_history[4]:  # No forward progress 
+                    if self.state_machine.num_timesteps <= 1 and not self.state_machine.step_flag:  # don't enforce terminal when swinging leg plants. 
+                        spring_forward_done = done = True
+                        reason_code = 'no forward progress'
+                        print('terminal condition: no forward progress ', pos[0] < self.position_history[0], reward)
+                
+                if abs(state[4] - state[9]) < abs(self.state_history[0][4] - self.state_history[0][9]):  # Legs are not moving apart
+                    done = True
+                    reason_code = 'legs not moving apart'
+                    print('terminal condition: legs not moving apart', self.state_machine.state, abs(state[4] - state[9]), abs(self.state_history[0][4] - self.state_history[0][9]), reward)
+                """
+                #print('velocity: ', state[2])
+
+                # Reward, 10 points at 0 velocity or above
+                if spring_forward_done or (state[2] > 0 and masked_action[0] == 1):
+                    reward += 10*math.exp(10*(state[2] - abs(state[2]))) - 9
+                    print('spring forward terminal penalty: ', reward)
+
+                gait_kpi = state[2]
+
+    # Old code for legs moving toward each other during switch leg
+
+    # Reward, 10 points for swinging leg in front of planted leg
+    if self.state_machine.swinging_leg == 'left' and masked_action[0] == 0:
+        reward += 10*math.exp(10*(self.legs[2].position[0] - self.legs[0].position[0]) - abs(self.legs[2].position[0] - self.legs[0].position[0])) 
+        print('plant leg reward: ', reward)
+        pass
+    if self.state_machine.swinging_leg == 'right' and masked_action[0] == 0:
+        reward += 10*math.exp(10*(self.legs[0].position[0] - self.legs[2].position[0]) - abs(self.legs[0].position[0] - self.legs[2].position[0]))
+        print('plant leg reward: ', reward)
+        pass
+
+    if self.state_machine.swinging_leg == 'left':
+        gait_kpi = self.legs[2].position[0] - self.legs[0].position[0]
+    if self.state_machine.swinging_leg == 'right':
+        gait_kpi = self.legs[0].position[0] - self.legs[2].position[0]
+

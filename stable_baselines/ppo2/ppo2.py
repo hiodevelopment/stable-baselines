@@ -475,7 +475,7 @@ class Runner(AbstractEnvRunner):
                 # Get action mask from callback
                 if (self.callback.on_step() is True or self.callback.on_training_start() is True) and self.callback.action_mask is not None:
                     self.action_masks.append(self.callback.action_mask)
-                    #print('in ppo callbacks', self.callback.action_mask[1][0])
+                    #print('in ppo callback: ', self.callback.action_mask[0], self.callback.action_mask[1][0], self.callback.action_mask[2][0][0], self.callback.action_mask[3][0][0][0], self.callback.action_mask[4][0][0][0][0])
                 # Abort training early
                 """ # This seemed to be calling a second on_step callback for each iteration. 
                 if self.callback.on_step() is False:
@@ -485,7 +485,6 @@ class Runner(AbstractEnvRunner):
                 """
             actions, values, self.states, neglogpacs = self.model.step(self.obs, self.states, self.dones,
                                                                        action_mask=self.action_masks)
-            #print('in ppo: ', actions, self.dones)
             mb_obs.append(self.obs.copy())
             mb_actions.append(actions)
             mb_values.append(values)
@@ -500,6 +499,7 @@ class Runner(AbstractEnvRunner):
 
             # Moved mask clear before callback so that mask can be set from callback.
             self.action_masks.clear()
+            #print('in ppo: ', actions, len(mb_neglogpacs))
             
             # Removing the environment based action mask mechanism for now. 
             """

@@ -254,14 +254,14 @@ class BasePolicy(ABC):
             return td_map
         elif isinstance(self.ac_space, Discrete):
             adjusted_action_mask = np.array(action_mask, dtype=np.float32)
-            adjusted_action_mask[adjusted_action_mask == 0] = -10
+            adjusted_action_mask[adjusted_action_mask == 0] = -np.inf #-10
             adjusted_action_mask[adjusted_action_mask == 1] = 0
             td_map[self.action_mask_phs[0]] = adjusted_action_mask
             return td_map
         elif isinstance(self.ac_space, MultiDiscrete):
             for i, mask in enumerate(action_mask[0]):
                 adjusted_action_mask = np.expand_dims(np.array(mask, dtype=np.float32), axis=0)
-                adjusted_action_mask[adjusted_action_mask == 0] = -10
+                adjusted_action_mask[adjusted_action_mask == 0] = -np.inf #-10
                 adjusted_action_mask[adjusted_action_mask == 1] = 0
                 td_map[self.action_mask_phs[i]] = adjusted_action_mask
             return td_map

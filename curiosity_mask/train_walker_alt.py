@@ -10,7 +10,8 @@ from gym.spaces import MultiDiscrete
 import stable_baselines.common.walker_action_mask as walker
 from stable_baselines import PPO2, A2C
 from stable_baselines.common.policies import MlpPolicy
-from stable_baselines.common.vec_env import DummyVecEnv
+from stable_baselines.common.vec_env import DummyVecEnv, SubprocVecEnv
+from stable_baselines.common.cmd_util import make_vec_env
 from stable_baselines.common.callbacks import BaseCallback, CheckpointCallback, EveryNTimesteps
 from curiosity_mask.util import create_dummy_action_mask as mask
 from curiosity_mask.util import set_action_mask_gait as gait_mask
@@ -18,7 +19,8 @@ from curiosity_mask.ui import UI
 
 from transitions import Machine
 
-env = DummyVecEnv([walker.BipedalWalker])
+#env = DummyVecEnv([walker.BipedalWalker])
+env = make_vec_env('Walker-v0', n_envs=4)
 
 class Walk(object):
 
@@ -32,9 +34,13 @@ class Walk(object):
 
     def brain_transition_plant_leg(self, event): 
         #if event.kwargs.get('velocity') > 0: 
-        if event.kwargs.get('velocity') > 0 and event.kwargs.get('hull_angle') < 0:
+        if event.kwargs.get('velocity') > 0 and event.kwargs.get('hull_angle') < 0:     # Enter fuzzy transition. 
             self.action_mask[0] = [1, 1, 0]
-        if event.kwargs.get('action')[0] == 1:
+        if event.kwargs.get('action')[0] == 1:                                              # Brain exit transition.
+            self.action_mask[0] = [0, 1, 0]
+            self.start = False
+            return True
+        if abs(event.kwargs.get('left_position') - event.kwargs.get('right_position')) > 0.25: # Rule exit transition.
             self.action_mask[0] = [0, 1, 0]
             self.start = False
             return True
@@ -45,12 +51,15 @@ class Walk(object):
             return True
 
     def brain_transition_lift_leg(self, event):
-        if self.swinging_leg == 'left' and self.num_timesteps > 5 and event.kwargs.get('right_position') > event.kwargs.get('left_position'): 
-            self.action_mask[0] = [1, 0, 1]
-        if self.swinging_leg == 'right' and self.num_timesteps > 5 and event.kwargs.get('left_position') > event.kwargs.get('right_position'): 
-            self.action_mask[0] = [1, 0, 1]
+        if self.swinging_leg == 'left' and event.kwargs.get('right_position') > event.kwargs.get('left_position'): 
+            #self.action_mask[0] = [1, 0, 1] # if lift leg state present
+            self.action_mask[0] = [0, 1, 1]
+        if self.swinging_leg == 'right' and event.kwargs.get('left_position') > event.kwargs.get('right_position'): 
+            #self.action_mask[0] = [1, 0, 1] # if lift leg state present
+            self.action_mask[0] = [0, 1, 1]
         if event.kwargs.get('action')[0] == 0: 
-            self.action_mask[0] = [1, 0, 0] 
+            #self.action_mask[0] = [1, 0, 0] # if lift leg state present
+            self.action_mask[0] = [0, 1, 0]
             return True
      
     def switch_legs(self, event):
@@ -81,7 +90,7 @@ class Walk(object):
     def log_iteration(self, event):
         if self.log:
             if event.kwargs.get('action') is not None:
-                print(self.state, 'activated: ', event.kwargs.get('action'), self.action_mask[0], self.num_timesteps, self.swinging_leg, round(event.kwargs.get('right_hip_angle'), 4), event.kwargs.get('left_contact'), event.kwargs.get('right_contact'))
+                print(self.state, 'activated: ', event.kwargs.get('action'), self.action_mask[0], self.num_timesteps, self.swinging_leg, round(abs(event.kwargs.get('left_position')-event.kwargs.get('right_position')), 4), event.kwargs.get('left_contact'), event.kwargs.get('right_contact'))
             else:
                 print('Episode Start', 'no action', self.action_mask[0], self.num_timesteps, self.swinging_leg, event.kwargs.get('left_contact'), event.kwargs.get('right_contact'))
         else:
@@ -101,6 +110,9 @@ class Walk(object):
         self.action_mask[0] = gait_action_mask
 
         # Flip bits to teach the strategy for this gait. (Left Hip, Left Knee, Right, Hip, Right Knee)
+        start_crouch_length = 6
+        switch_crouch_length = 8
+
         if self.swinging_leg == 'left':
 
             ranges = {'left_hip': {'min': teaching['gait-' + gait_ref + '-swinging-hip-min'], 'max': teaching['gait-' + gait_ref + '-swinging-hip-max']},
@@ -108,15 +120,15 @@ class Walk(object):
                     'right_hip': {'min': teaching['gait-' + gait_ref + '-planted-hip-min'], 'max': teaching['gait-' + gait_ref + '-planted-hip-max']}, 
                     'right_knee': {'min': teaching['gait-' + gait_ref + '-planted-knee-min'], 'max': teaching['gait-' + gait_ref + '-planted-knee-max']}
                 }
-            """
-            if self.state == 'start_crouch':
+            #"""
+            if ((self.state == 'start' or self.state == 'lift_leg') and self.num_timesteps <= start_crouch_length) or (self.state == 'switch_leg' and self.num_timesteps <= switch_crouch_length):
 
                 ranges['right_hip']['min'] = 10
 
-            if self.state == 'start_spring_forward':
+            if ((self.state == 'start' or self.state == 'lift_leg') and self.num_timesteps > start_crouch_length) or (self.state == 'switch_leg' and self.num_timesteps > switch_crouch_length):
 
                 ranges['right_hip']['max'] = 10
-            """
+            #"""
             self.action_mask = gait_mask(gait, ranges, self.action_mask)
 
         if self.swinging_leg == 'right':
@@ -126,15 +138,15 @@ class Walk(object):
                 'right_hip': {'min': teaching['gait-' + gait_ref + '-swinging-hip-min'], 'max': teaching['gait-' + gait_ref + '-swinging-hip-max']}, 
                 'right_knee': {'min': teaching['gait-' + gait_ref + '-swinging-knee-min'], 'max': teaching['gait-' + gait_ref + '-swinging-knee-max']}
             }
-            """
-            if self.state == 'start_crouch':
+            #"""
+            if ((self.state == 'start' or self.state == 'lift_leg') and self.num_timesteps <= start_crouch_length) or (self.state == 'switch_leg' and self.num_timesteps <= switch_crouch_length):
 
                 ranges['left_hip']['min'] = 10
 
-            if self.state == 'start_spring_forward':
+            if ((self.state == 'start' or self.state == 'lift_leg') and self.num_timesteps > start_crouch_length) or (self.state == 'switch_leg' and self.num_timesteps > switch_crouch_length):
 
                 ranges['left_hip']['max'] = 10
-            """
+            #"""
             #print('gait mask details: ', gait, ranges, self.action_mask[1])
             self.action_mask = gait_mask(gait, ranges, self.action_mask)   
         
@@ -168,7 +180,6 @@ class ActionMaskCallback(BaseCallback):
         self.action_mask = mask(self.action_space)
         self.action_mask[0] = [1, 0, 0]
 
-        #states = ['start_crouch', 'start_spring_forward', 'lift_leg', 'plant_leg', 'switch_leg']
         states = ['start', 'start_spring_forward', 'lift_leg', 'plant_leg', 'switch_leg']
         self.gait = Walk()
         self.gait.num_timesteps = self.num_timesteps
@@ -180,41 +191,22 @@ class ActionMaskCallback(BaseCallback):
         self.gait.start = True
         self.gait.step_count = 0
         self.gait.step_flag = False
-        self.gait.log = True
+        self.gait.log = False
         self.gait.starting_position = 4
 
         machine = Machine(self.gait, states=states, send_event=True, initial='start')
 
         # Setup for Pure Selector Orchestration
-        machine.add_transition('move', 'start_crouch', 'start_spring_forward', conditions='brain_transition_spring_forward', prepare=['log_iteration', 'set_mask'], before=['reset_iter_counter'])
-        #machine.add_transition('move', 'start_crouch', 'plant_leg', conditions='brain_transition_plant_leg', prepare=['log_iteration', 'set_mask'], before=['reset_iter_counter'])
-        #machine.add_transition('move', 'start_spring_forward', 'plant_leg', conditions='brain_transition_plant_leg', prepare=['log_iteration', 'set_mask'], before=['reset_iter_counter'])
         machine.add_transition('move', 'start', 'plant_leg', conditions='brain_transition_plant_leg', prepare=['log_iteration', 'set_mask'], before=['reset_iter_counter'])
         machine.add_transition('move', 'lift_leg', 'plant_leg', conditions='brain_transition_plant_leg', unless='is_start', prepare=['log_iteration', 'set_mask'], before=['reset_iter_counter'])
         machine.add_transition('move', 'plant_leg', 'switch_leg', conditions='is_swinging_leg_planted', prepare=['log_iteration', 'set_mask'], before=['reset_iter_counter', 'switch_legs', 'increment_step_count'])
-        machine.add_transition('move', 'switch_leg', 'lift_leg', conditions='brain_transition_lift_leg', prepare=['log_iteration', 'set_mask'], before=['reset_iter_counter'])
+        #machine.add_transition('move', 'switch_leg', 'lift_leg', conditions='brain_transition_lift_leg', prepare=['log_iteration', 'set_mask'], before=['reset_iter_counter'])
+        machine.add_transition('move', 'switch_leg', 'plant_leg', conditions='brain_transition_lift_leg', prepare=['log_iteration', 'set_mask'], before=['reset_iter_counter'])
 
         machine.add_transition('reset', 'start', 'start', before=['reinstate', 'reset_step_counter', 'set_mask'])
-        machine.add_transition('reset', 'start_spring_forward', 'start', before=['reinstate', 'reset_step_counter', 'set_mask'])
         machine.add_transition('reset', 'plant_leg', 'start', before=['reinstate', 'reset_step_counter', 'set_mask'])
         machine.add_transition('reset', 'switch_leg', 'start', before=['reinstate', 'reset_step_counter', 'set_mask'])
         machine.add_transition('reset', 'lift_leg', 'start', before=['reinstate', 'reset_step_counter', 'set_mask'])
-
-        """    
-        machine.add_transition('reset', 'start_crouch', 'start_crouch', before=['reinstate', 'reset_step_counter', 'set_mask'])
-        machine.add_transition('reset', 'start_spring_forward', 'start_crouch', before=['reinstate', 'reset_step_counter', 'set_mask'])
-        machine.add_transition('reset', 'plant_leg', 'start_crouch', before=['reinstate', 'reset_step_counter', 'set_mask'])
-        machine.add_transition('reset', 'switch_leg', 'start_crouch', before=['reinstate', 'reset_step_counter', 'set_mask'])
-        machine.add_transition('reset', 'lift_leg', 'start_crouch', before=['reinstate', 'reset_step_counter', 'set_mask'])
-        """
-
-        """
-        machine.add_transition('reset', 'start_crouch', 'start_spring_forward', before=['reinstate', 'reset_step_counter', 'set_mask'])
-        machine.add_transition('reset', 'start_spring_forward', 'start_spring_forward', before=['reinstate', 'reset_step_counter', 'set_mask'])
-        machine.add_transition('reset', 'plant_leg', 'start_spring_forward', before=['reinstate', 'reset_step_counter', 'set_mask'])
-        machine.add_transition('reset', 'switch_leg', 'start_spring_forward', before=['reinstate', 'reset_step_counter', 'set_mask'])
-        machine.add_transition('reset', 'lift_leg', 'start_spring_forward', before=['reinstate', 'reset_step_counter', 'set_mask'])
-        """
 
         #print('callback init')
         self.ui = UI()
@@ -289,7 +281,7 @@ class ActionMaskCallback(BaseCallback):
                             left_knee_height=left_leg['knee_height'], right_knee_height=right_leg['knee_height'], teaching=self.gait.teaching)
         
         self.action_mask = self.gait.action_mask
-        self.training_env.env_method('render')
+        #self.training_env.env_method('render')
         if self.gait.terminal:
             self.training_env.env_method('set_terminal', self.gait.terminal)
 
@@ -310,10 +302,10 @@ class ActionMaskCallback(BaseCallback):
 # Callbacks for the Brains
 callback = ActionMaskCallback()
   
-brain = PPO2(MlpPolicy, env, verbose=2, tensorboard_log="walker_training_graphs/") # , tensorboard_log="walker_training_graphs/"
+brain = PPO2(MlpPolicy, env, verbose=2, tensorboard_log="/training_graphs/walker/") #, tensorboard_log="/training_graphs/walker/"
 #brain.load("crouch_spring_first_step_brain")
-brain.learn(250000, callback=callback)
+brain.learn(5000000, callback=callback)
 
-brain.save("crouch_spring_first_step_brain")
+brain.save("walker_brain")
 
 

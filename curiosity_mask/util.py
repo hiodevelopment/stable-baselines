@@ -36,22 +36,48 @@ def create_negative_action_mask(ac_spaces: MultiDiscrete):
 left_hip = left_knee = right_hip = right_knee = range(21)
 
 def set_action_mask_gait(gait, ranges, mask):
-    for left_hip_index in list(filter(lambda x: x >= ranges['left_hip']['min'] and x <= ranges['left_hip']['max'], left_hip)): # (range(ranges['left_hip']['min'], ranges['left_hip']['max'])):
+    for left_hip_index in list(filter(lambda x: x >= ranges['left_hip']['min'] and x <= ranges['left_hip']['max'], left_hip)): 
         mask[1][gait][left_hip_index] = 1
-        for left_knee_index in list(filter(lambda x: x >= ranges['left_knee']['min'] and x <= ranges['left_knee']['max'], left_knee)): # range(ranges['left_knee']['min'], ranges['left_knee']['max']+1):
+        for left_knee_index in list(filter(lambda x: x >= ranges['left_knee']['min'] and x <= ranges['left_knee']['max'], left_knee)): 
             mask[2][gait][left_hip_index][left_knee_index] = 1
-            for right_hip_index in list(filter(lambda x: x >= ranges['right_hip']['min'] and x <= ranges['right_hip']['max'], right_hip)): # range(ranges['right_hip']['min'], ranges['right_hip']['max']+1):
+            for right_hip_index in list(filter(lambda x: x >= ranges['right_hip']['min'] and x <= ranges['right_hip']['max'], right_hip)): 
                 mask[3][gait][left_hip_index][left_knee_index][right_hip_index] = 1
-                for right_knee_index in list(filter(lambda x: x >= ranges['right_knee']['min'] and x <= ranges['right_knee']['max'], right_knee)): # range(ranges['right_knee']['min'], ranges['right_knee']['max']+1):
+                for right_knee_index in list(filter(lambda x: x >= ranges['right_knee']['min'] and x <= ranges['right_knee']['max'], right_knee)): 
                     mask[4][gait][left_hip_index][left_knee_index][right_hip_index][right_knee_index] = 1
     return mask
 
 
-def test_mask(self, step, event):
+def test_mask(action, state, teaching, swinging_leg):
+    
+    if state == 'start' or state == 'lift_leg':
+        gait = 0
+    if state == 'plant_leg':
+        gait = 1
+    if state == 'switch_leg':
+        gait = 2
+
+    gait_ref = str(gait+1)
+    
+    if swinging_leg == 'left':
+
+            ranges = {'left_hip': {'min': teaching['gait-' + gait_ref + '-swinging-hip-min'], 'max': teaching['gait-' + gait_ref + '-swinging-hip-max']},
+                    'left_knee': {'min': teaching['gait-' + gait_ref + '-swinging-knee-min'], 'max': teaching['gait-' + gait_ref + '-swinging-knee-max']}, 
+                    'right_hip': {'min': teaching['gait-' + gait_ref + '-planted-hip-min'], 'max': teaching['gait-' + gait_ref + '-planted-hip-max']}, 
+                    'right_knee': {'min': teaching['gait-' + gait_ref + '-planted-knee-min'], 'max': teaching['gait-' + gait_ref + '-planted-knee-max']}
+                }
+    if swinging_leg == 'right':
+
+            ranges = {'left_hip': {'min': teaching['gait-' + gait_ref + '-planted-hip-min'], 'max': teaching['gait-' + gait_ref + '-planted-hip-max']},
+                'left_knee': {'min': teaching['gait-' + gait_ref + '-planted-knee-min'], 'max': teaching['gait-' + gait_ref + '-planted-knee-max']}, 
+                'right_hip': {'min': teaching['gait-' + gait_ref + '-swinging-hip-min'], 'max': teaching['gait-' + gait_ref + '-swinging-hip-max']}, 
+                'right_knee': {'min': teaching['gait-' + gait_ref + '-swinging-knee-min'], 'max': teaching['gait-' + gait_ref + '-swinging-knee-max']}
+            }
+
     action_list = []
-    for x_index, x_value in enumerate(list(filter(lambda x: x >= left_hip_min and x <= left_hip_max, left_hip))):
-        for x_index, x_value in enumerate(list(filter(lambda x: x >= left_hip_min and x <= left_hip_max, left_hip))):
-            for y_index, y_value in enumerate(list(filter(lambda x: x >= left_knee_min and x <= left_knee_max, left_knee))):
-                for z_index, z_value in enumerate(list(filter(lambda x: x >= right_hip_min and x <= right_hip_max, right_hip))):
-                    for j_index, j_value in enumerate(list(filter(lambda x: x >= right_knee_min and x <= right_knee_max, right_knee))):
-                        action_list.append((x_value, y_value, z_value, j_value))
+    for left_hip_index in list(filter(lambda x: x >= ranges['left_hip']['min'] and x <= ranges['left_hip']['max'], left_hip)):
+        for left_knee_index in list(filter(lambda x: x >= ranges['left_knee']['min'] and x <= ranges['left_knee']['max'], left_knee)):
+            for right_hip_index in list(filter(lambda x: x >= ranges['right_hip']['min'] and x <= ranges['right_hip']['max'], right_hip)):
+                for right_knee_index in list(filter(lambda x: x >= ranges['right_knee']['min'] and x <= ranges['right_knee']['max'], right_knee)):
+                        action_list.append((left_hip_index, left_knee_index, right_hip_index, right_knee_index))
+    #print(action_list)
+    return action in action_list

@@ -1,0 +1,1 @@
+iteration,episode,gait_iteration,gait_phase,gait_action,left_hip,left_knee,right_hip,right_knee,hull_position,left_hip_angle,left_knee_angle,right_hip_angle,right_knee_angle,terminal,gait_kpi,reward,reason_code

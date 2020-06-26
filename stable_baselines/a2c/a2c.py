@@ -354,7 +354,7 @@ class A2CRunner(AbstractEnvRunner):
                 # Get action mask from callback
                 if (self.callback.on_step() is True or self.callback.on_training_start() is True) and self.callback.action_mask is not None:
                     self.action_masks.append(self.callback.action_mask)
-                    #print('in ppo callbacks', self.callback.action_mask[1][0])
+                    #print('in a2c callback: ', self.callback.action_mask[0], self.callback.action_mask[1][0], self.callback.action_mask[2][0][0], self.callback.action_mask[3][0][0][0], self.callback.action_mask[4][0][0][0][0])
                 """ # This seems to be causing the on_step callback to be called twice. 
                 # Abort training early
                 if self.callback.on_step() is False:

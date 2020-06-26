@@ -20,18 +20,18 @@ class UI():
         
         teach_gait1 = [[sg.Text('Swinging Hip (Min)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=2, key='gait-1-swinging-hip-min'),
                             sg.Text('Swinging Hip (Max)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=2, key='gait-1-swinging-hip-max')],
-                            [sg.Text('Swinging Knee (Min)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=-10, key='gait-1-swinging-knee-min'),
-                            sg.Text('Swinging Knee (Max)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=-10, key='gait-1-swinging-knee-max')],
-                            [sg.Text('Planted Hip (Min)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=-5, key='gait-1-planted-hip-min'),
+                            [sg.Text('Swinging Knee (Min)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=-1, key='gait-1-swinging-knee-min'),
+                            sg.Text('Swinging Knee (Max)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=-1, key='gait-1-swinging-knee-max')],
+                            [sg.Text('Planted Hip (Min)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=-10, key='gait-1-planted-hip-min'),
                             sg.Text('Planted Hip (Max)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=1, key='gait-1-planted-hip-max')],
                             [sg.Text('Planted Knee (Min)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=1, key='gait-1-planted-knee-min'),
-                            sg.Text('Planted Knee (Max)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=1, key='gait-1-planted-knee-max')] 
+                            sg.Text('Planted Knee (Max)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=6, key='gait-1-planted-knee-max')] 
                             ]
 
-        teach_gait2 = [[sg.Text('Swinging Hip (Min)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=-4, key='gait-2-swinging-hip-min'),
-                            sg.Text('Swinging Hip (Max)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=-4, key='gait-2-swinging-hip-max')],
-                            [sg.Text('Swinging Knee (Min)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=10, key='gait-2-swinging-knee-min'),
-                            sg.Text('Swinging Knee (Max)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=10, key='gait-2-swinging-knee-max')],
+        teach_gait2 = [[sg.Text('Swinging Hip (Min)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=-6, key='gait-2-swinging-hip-min'),
+                            sg.Text('Swinging Hip (Max)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=-6, key='gait-2-swinging-hip-max')],
+                            [sg.Text('Swinging Knee (Min)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=1, key='gait-2-swinging-knee-min'),
+                            sg.Text('Swinging Knee (Max)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=1, key='gait-2-swinging-knee-max')],
                             [sg.Text('Planted Hip (Min)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=-3, key='gait-2-planted-hip-min'),
                             sg.Text('Planted Hip (Max)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=1, key='gait-2-planted-hip-max')],
                             [sg.Text('Planted Knee (Min)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=1, key='gait-2-planted-knee-min'),
@@ -42,10 +42,10 @@ class UI():
                             sg.Text('Swinging Hip (Max)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=10, key='gait-3-swinging-hip-max')],
                             [sg.Text('Swinging Knee (Min)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=-10, key='gait-3-swinging-knee-min'),
                             sg.Text('Swinging Knee (Max)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=-10, key='gait-3-swinging-knee-max')],
-                            [sg.Text('Planted Hip (Min)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=-10, key='gait-3-planted-hip-min'),
+                            [sg.Text('Planted Hip (Min)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=-3, key='gait-3-planted-hip-min'),
                             sg.Text('Planted Hip (Max)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=2, key='gait-3-planted-hip-max')],
                             [sg.Text('Planted Knee (Min)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=1, key='gait-3-planted-knee-min'),
-                            sg.Text('Planted Knee (Max)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=1, key='gait-3-planted-knee-max')] 
+                            sg.Text('Planted Knee (Max)', size=(15, 1)), sg.Slider(range=(-10,10), orientation='h', size=(7, 10), default_value=5, key='gait-3-planted-knee-max')] 
                             ]
 
         layout = [ [sg.StatusBar('Gait Phase: Waiting to Start Training.', key='teaching-button-1')],
@@ -54,7 +54,7 @@ class UI():
                 [sg.Frame('Gait Phase 2: Plant Swinging Leg', teach_gait2, font='Any 12')],
                 [sg.Frame('Gait Phase 3: Switch Legs, Swing Leg',  teach_gait3,
                             font='Any 12')],
-                [sg.Radio('Lesson 1', "lessons", key='radio-1', default=True),
+                [sg.Radio('Lesson 1: Practice first step.', "lessons", key='radio-1', default=True),
     sg.Radio('Lesson 2', "lessons", key='radio-2')],
                 [sg.Submit(), sg.Cancel()]]
 
