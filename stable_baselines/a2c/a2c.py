@@ -349,19 +349,14 @@ class A2CRunner(AbstractEnvRunner):
         mb_states = self.states
         ep_infos = []
         for _ in range(self.n_steps):
+
             # Check the callback FIRST to get the action mask before taking ANY actions. 
             if self.callback is not None:
+
                 # Get action mask from callback
                 if (self.callback.on_step() is True or self.callback.on_training_start() is True) and self.callback.action_mask is not None:
                     self.action_masks.append(self.callback.action_mask)
-                    #print('in a2c callback: ', self.callback.action_mask[0], self.callback.action_mask[1][0], self.callback.action_mask[2][0][0], self.callback.action_mask[3][0][0][0], self.callback.action_mask[4][0][0][0][0])
-                """ # This seems to be causing the on_step callback to be called twice. 
-                # Abort training early
-                if self.callback.on_step() is False:
-                    self.continue_training = False
-                    # Return dummy values
-                    return [None] * 9
-                """
+                
             actions, values, states, _ = self.model.step(self.obs, self.states, self.dones, action_mask=self.action_masks)
             mb_obs.append(np.copy(self.obs))
             mb_actions.append(actions)
@@ -387,10 +382,10 @@ class A2CRunner(AbstractEnvRunner):
                     self.action_masks.append(env_action_mask)
                     print('in ppo infos', self.callback.action_mask[1][0])
             """ 
-
             self.states = states
             self.dones = dones
             self.obs = obs
+            self.action_masks.clear()
             mb_rewards.append(rewards)
         mb_dones.append(self.dones)
         # batch of steps to batch of rollouts
