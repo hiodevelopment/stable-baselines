@@ -4,6 +4,8 @@
 
 # Stable Baselines
 
+RF [Learning Resources](https://stable-baselines.readthedocs.io/en/master/guide/rl.html) 
+
 Stable Baselines is a set of improved implementations of reinforcement learning algorithms based on OpenAI [Baselines](https://github.com/openai/baselines/).
 
 You can read a detailed presentation of Stable Baselines in the [Medium article](https://medium.com/@araffin/stable-baselines-a-fork-of-openai-baselines-reinforcement-learning-made-easy-df87c4b2fc82).
